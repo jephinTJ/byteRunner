@@ -30,7 +30,7 @@ ByteRunner is a desktop automation and analytics tool built with Python, CustomT
 
 ### 1. Clone the Repository
 ```bash
-git clone [https://github.com/](https://github.com/)<your-username>/byterunner.git
+git clone [https://github.com/](https://github.com/)<jephinTJ>/byteRunner.git
 cd byterunner
 ```
 
