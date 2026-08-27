@@ -1,0 +1,1445 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ByteRunner</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Inter Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Flatpickr (Modern Calendar) -->
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { sans: ["Inter", "sans-serif"] },
+            colors: {
+              brand: {
+                50: "#ecfdf5",
+                500: "#10b981",
+                600: "#059669",
+                spotify: "#1DB954",
+              },
+              surface: {
+                base: "#09090b", // Deep obsidian background
+                card: "#121215", // Elevated card surface
+                hover: "#1a1a1f", // Hover elevation
+                border: "#27272a", // Subtle border
+              },
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      /* Custom Scrollbar for Spotify feel */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #27272a;
+        border-radius: 9999px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #3f3f46;
+      }
+      body {
+        user-select: none;
+      }
+
+      /* Modern Flatpickr Overrides */
+      .flatpickr-calendar {
+        background: #18181b !important;
+        border: 1px solid #27272a !important;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5) !important;
+        font-family: "Inter", sans-serif !important;
+      }
+      .flatpickr-months .flatpickr-month {
+        background: #18181b !important;
+        color: #f4f4f5 !important;
+      }
+      .flatpickr-current-month .flatpickr-monthDropdown-months {
+        background: #18181b !important;
+      }
+      .flatpickr-weekdays {
+        background: #18181b !important;
+      }
+      span.flatpickr-weekday {
+        color: #a1a1aa !important;
+        font-weight: 600 !important;
+      }
+      .flatpickr-day {
+        color: #e4e4e7 !important;
+        border-radius: 8px !important;
+      }
+      .flatpickr-day.selected {
+        background: #10b981 !important;
+        border-color: #10b981 !important;
+        color: #000 !important;
+        font-weight: 700 !important;
+      }
+      .flatpickr-day:hover:not(.selected) {
+        background: #27272a !important;
+        border-color: #27272a !important;
+      }
+      .flatpickr-day.flatpickr-disabled {
+        color: #3f3f46 !important;
+      }
+      .flatpickr-calendar.arrowTop:before,
+      .flatpickr-calendar.arrowTop:after {
+        border-bottom-color: #27272a !important;
+      }
+      /* Calendar Green Arrows */
+      .flatpickr-months .flatpickr-prev-month svg,
+      .flatpickr-months .flatpickr-next-month svg {
+        fill: #10b981 !important;
+      }
+      .flatpickr-months .flatpickr-prev-month:hover svg,
+      .flatpickr-months .flatpickr-next-month:hover svg {
+        fill: #059669 !important;
+      }
+      .numInputWrapper span.arrowUp:after {
+        border-bottom-color: #10b981 !important;
+      }
+      .numInputWrapper span.arrowDown:after {
+        border-top-color: #10b981 !important;
+      }
+
+      /* Indeterminate Sweeping Animation for "Preparing" State */
+      @keyframes sweep {
+        0% {
+          background-position: 200% 0;
+        }
+        100% {
+          background-position: -200% 0;
+        }
+      }
+      .animate-sweep {
+        background: linear-gradient(
+          90deg,
+          transparent,
+          rgba(16, 185, 129, 0.25),
+          transparent
+        );
+        background-size: 200% 100%;
+        width: 100% !important;
+        animation: sweep 2s infinite linear;
+      }
+    </style>
+  </head>
+
+  <body
+    class="bg-surface-base text-zinc-100 font-sans min-h-screen flex flex-col antialiased selection:bg-brand-500 selection:text-black"
+  >
+    <!-- ========================================== -->
+    <!-- SECTION 1: APP SHELL & TOP NAVIGATION     -->
+    <!-- ========================================== -->
+    <header
+      class="sticky top-0 z-40 w-full border-b border-surface-border/80 bg-surface-base/80 backdrop-blur-md px-6 py-3.5 transition-all"
+    >
+      <div class="max-w-6xl mx-auto flex items-center justify-between gap-4">
+        <!-- Brand & Status Pill -->
+        <div class="flex items-center gap-3">
+          <div
+            class="h-9 w-9 rounded-xl bg-[#1c2938] flex items-center justify-center shadow-lg shadow-black/20"
+          >
+            <!-- ByteBrew Icon (References parent folder) -->
+            <img
+              src="../bb.png"
+              alt="BB"
+              class="w-6 h-6 object-contain drop-shadow-md"
+              onerror="
+                this.outerHTML =
+                  '<span class=&quot;font-bold text-white text-xs&quot;>BB</span>'
+              "
+            />
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-base tracking-tight text-white"
+                >ByteRunner</span
+              >
+              <span
+                class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/50"
+                >v2.0</span
+              >
+            </div>
+            <div class="flex items-center gap-1.5 mt-0.5">
+              <span id="system-dot" class="relative flex h-2 w-2">
+                <span
+                  class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-75"
+                ></span>
+                <span
+                  class="relative inline-flex rounded-full h-2 w-2 bg-brand-500"
+                ></span>
+              </span>
+              <span
+                id="system-status-text"
+                class="text-xs text-zinc-400 font-medium"
+                >MindYourLogic Studios</span
+              >
+            </div>
+          </div>
+        </div>
+
+        <!-- Top Control Bar (Action Buttons) -->
+        <div class="flex items-center gap-2.5">
+          <!-- Date Selector Trigger -->
+          <button
+            id="btn-date"
+            onclick="onDatePickerClick()"
+            class="group flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border hover:border-zinc-700 text-xs font-semibold text-zinc-200 transition-all duration-200 hover:shadow-sm"
+          >
+            <i
+              data-lucide="calendar"
+              class="w-4 h-4 text-brand-500 transition-transform group-hover:scale-110"
+            ></i>
+            <span id="label-selected-date">Loading...</span>
+          </button>
+
+          <!-- Refresh Pull Button -->
+          <button
+            id="btn-refresh"
+            onclick="onRefreshClick()"
+            class="group flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border hover:border-zinc-700 text-xs font-semibold text-zinc-200 transition-all duration-200 hover:shadow-sm"
+          >
+            <span id="icon-refresh-wrap" class="inline-flex items-center">
+              <i
+                data-lucide="refresh-cw"
+                class="w-4 h-4 text-zinc-400 group-hover:text-white transition-transform"
+              ></i>
+            </span>
+            <span id="label-refresh">Refresh Pull</span>
+          </button>
+
+          <!-- Open Output Folder Button -->
+          <button
+            id="btn-folder"
+            onclick="onFolderClick()"
+            class="group flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border hover:border-zinc-700 text-xs font-semibold text-zinc-200 transition-all duration-200 hover:shadow-sm"
+          >
+            <i
+              data-lucide="folder"
+              class="w-4 h-4 text-amber-400 transition-transform group-hover:scale-110"
+            ></i>
+            <span>Output Folder</span>
+          </button>
+
+          <!-- Credentials Setup Button -->
+          <button
+            id="btn-creds"
+            onclick="onCredsClick()"
+            class="group flex items-center gap-2 px-3.5 py-2 rounded-xl bg-surface-card hover:bg-surface-hover border border-surface-border hover:border-zinc-700 text-xs font-semibold text-zinc-200 transition-all duration-200 hover:shadow-sm"
+          >
+            <i
+              data-lucide="key"
+              class="w-4 h-4 text-zinc-400 group-hover:text-brand-500 transition-transform group-hover:rotate-12"
+            ></i>
+            <span>Login Info</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- ========================================== -->
+    <!-- SECTION 2 & 3: STACKED ACCORDION QUEUES    -->
+    <!-- ========================================== -->
+    <main class="flex-1 max-w-6xl w-full mx-auto p-6 space-y-5">
+      <!-- 1. Daily Game DP1 Accordion (Collapsed by Default) -->
+      <div
+        class="rounded-2xl border border-surface-border bg-surface-card overflow-hidden shadow-sm transition-all duration-300"
+      >
+        <div
+          class="relative overflow-hidden px-6 py-3.5 flex items-center justify-between border-b border-surface-border/60 bg-surface-hover/30"
+        >
+          <!-- Header Cumulative Progress Bar Layer -->
+          <div
+            id="header-progress-bar-dp1"
+            class="absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] duration-500 ease-out"
+          ></div>
+
+          <div class="relative z-10 flex items-center gap-3">
+            <button
+              onclick="toggleCollapse('dp1')"
+              class="p-1 rounded-lg hover:bg-surface-border/60 text-zinc-400 hover:text-white transition-all"
+            >
+              <i
+                id="icon-collapse-dp1"
+                data-lucide="chevron-down"
+                class="w-5 h-5 transition-transform duration-200 -rotate-90"
+              ></i>
+            </button>
+            <div class="flex items-center gap-2.5">
+              <h2 class="text-sm font-bold text-white tracking-tight">
+                Games DP1
+              </h2>
+              <span
+                id="badge-task-count-dp1"
+                class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60"
+                >0 Active</span
+              >
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="relative group">
+              <i
+                data-lucide="search"
+                class="absolute left-2.5 top-[7px] w-3.5 h-3.5 text-zinc-500 group-focus-within:text-brand-500 transition-colors"
+              ></i>
+              <input
+                type="text"
+                id="input-search-dp1"
+                onkeyup="filterTasks('dp1')"
+                placeholder="Search games..."
+                class="bg-surface-base border border-surface-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-brand-500 transition-all w-28 focus:w-44 shadow-inner"
+              />
+            </div>
+
+            <button
+              id="btn-run-all-dp1"
+              onclick="runAll('dp1')"
+              class="group flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-black font-bold text-xs shadow-lg shadow-brand-500/10 hover:shadow-brand-500/25 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <i data-lucide="play" class="w-3.5 h-3.5 fill-black"></i>
+              <span id="label-run-all-dp1">Run All</span>
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="tasks-container-dp1"
+          class="p-4 pr-2 space-y-2.5 transition-all duration-300 max-h-[280px] overflow-y-auto hidden"
+        >
+          <div
+            id="loading-skeleton-dp1"
+            class="p-6 text-center text-xs text-zinc-500 flex flex-col items-center justify-center gap-2"
+          >
+            <i
+              data-lucide="loader-2"
+              class="w-5 h-5 animate-spin text-brand-500"
+            ></i>
+            <span>Fetching tasks...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. All Geo DP1 Accordion (Collapsed by Default) -->
+      <div
+        class="rounded-2xl border border-surface-border bg-surface-card overflow-hidden shadow-sm transition-all duration-300"
+      >
+        <div
+          class="relative overflow-hidden px-6 py-3.5 flex items-center justify-between border-b border-surface-border/60 bg-surface-hover/30"
+        >
+          <!-- Header Cumulative Progress Bar Layer -->
+          <div
+            id="header-progress-bar-all_geo"
+            class="absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] duration-500 ease-out"
+          ></div>
+
+          <div class="relative z-10 flex items-center gap-3">
+            <button
+              onclick="toggleCollapse('all_geo')"
+              class="p-1 rounded-lg hover:bg-surface-border/60 text-zinc-400 hover:text-white transition-all"
+            >
+              <i
+                id="icon-collapse-all_geo"
+                data-lucide="chevron-down"
+                class="w-5 h-5 transition-transform duration-200 -rotate-90"
+              ></i>
+            </button>
+            <div class="flex items-center gap-2.5">
+              <h2 class="text-sm font-bold text-white tracking-tight">
+                All Geo DP1
+              </h2>
+              <span
+                id="badge-task-count-all_geo"
+                class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60"
+                >0 Active</span
+              >
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <div class="relative group">
+              <i
+                data-lucide="search"
+                class="absolute left-2.5 top-[7px] w-3.5 h-3.5 text-zinc-500 group-focus-within:text-brand-500 transition-colors"
+              ></i>
+              <input
+                type="text"
+                id="input-search-all_geo"
+                onkeyup="filterTasks('all_geo')"
+                placeholder="Search games..."
+                class="bg-surface-base border border-surface-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-brand-500 transition-all w-28 focus:w-44 shadow-inner"
+              />
+            </div>
+
+            <button
+              id="btn-run-all-all_geo"
+              onclick="runAll('all_geo')"
+              class="group flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-black font-bold text-xs shadow-lg shadow-brand-500/10 hover:shadow-brand-500/25 transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              <i data-lucide="play" class="w-3.5 h-3.5 fill-black"></i>
+              <span id="label-run-all-all_geo">Run All</span>
+            </button>
+          </div>
+        </div>
+
+        <div
+          id="tasks-container-all_geo"
+          class="p-4 pr-2 space-y-2.5 transition-all duration-300 max-h-[280px] overflow-y-auto hidden"
+        >
+          <div
+            id="loading-skeleton-all_geo"
+            class="p-6 text-center text-xs text-zinc-500 flex flex-col items-center justify-center gap-2"
+          >
+            <i
+              data-lucide="loader-2"
+              class="w-5 h-5 animate-spin text-brand-500"
+            ></i>
+            <span>Fetching tasks...</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Frontend JS Bridge -->
+    <!-- ========================================== -->
+    <!-- SECTION 4: LIVE LOG TERMINAL DRAWER        -->
+    <!-- ========================================== -->
+
+    <div
+      id="terminal-drawer"
+      class="fixed bottom-0 left-0 right-0 w-full z-50 flex flex-col transition-all duration-300 transform translate-y-[calc(100%-2.5rem)] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.5)]"
+    >
+      <!-- Mini Status Bar (Always visible) -->
+      <button
+        onclick="toggleTerminal()"
+        class="h-10 w-full bg-surface-card border-t border-surface-border flex items-center justify-between px-6 hover:bg-surface-hover transition-colors cursor-pointer group"
+      >
+        <div class="flex items-center gap-3 truncate">
+          <span class="relative flex h-2 w-2">
+            <span
+              id="log-ping"
+              class="absolute inline-flex h-full w-full rounded-full bg-brand-500 opacity-0 transition-opacity duration-300"
+            ></span>
+            <span
+              class="relative inline-flex rounded-full h-2 w-2 bg-zinc-600 group-hover:bg-brand-500 transition-colors"
+            ></span>
+          </span>
+          <span
+            id="mini-log-text"
+            class="text-[11px] font-mono text-zinc-400 truncate tracking-tight"
+            >System initialized. Awaiting tasks...</span
+          >
+        </div>
+        <i
+          id="terminal-chevron"
+          data-lucide="chevron-up"
+          class="w-4 h-4 text-zinc-500 group-hover:text-white transition-transform duration-300"
+        ></i>
+      </button>
+
+      <!-- Expanded Terminal Area -->
+      <div
+        class="h-64 bg-[#0a0a0c] border-t border-surface-border p-4 flex flex-col"
+      >
+        <div
+          class="flex items-center justify-between mb-2 pb-2 border-b border-white/5"
+        >
+          <span
+            class="text-[10px] uppercase font-bold tracking-widest text-zinc-500"
+            >Live Execution Telemetry</span
+          >
+          <div class="flex gap-3">
+            <button
+              onclick="clearLogs()"
+              class="text-[10px] uppercase font-bold text-zinc-500 hover:text-white transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        <div
+          id="log-container"
+          class="flex-1 overflow-y-auto space-y-1 pr-2 font-mono text-[11px] leading-relaxed"
+        >
+          <!-- Logs will stream here -->
+        </div>
+      </div>
+    </div>
+    <!-- ========================================== -->
+    <!-- SECTION 5: MODAL OVERLAYS                  -->
+    <!-- ========================================== -->
+
+    <!-- Backdrop (Hidden by default) -->
+    <div
+      id="modal-backdrop"
+      class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
+    >
+      <!-- CREDENTIALS MODAL -->
+      <div
+        id="modal-creds"
+        class="hidden transform scale-95 opacity-0 transition-all duration-300 w-full max-w-sm bg-surface-card border border-surface-border rounded-2xl shadow-2xl overflow-hidden"
+      >
+        <div class="p-6">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="p-2 rounded-lg bg-brand-500/10 text-brand-500">
+              <i data-lucide="key" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-white font-bold tracking-tight">
+                ByteBrew Credentials
+              </h3>
+              <p class="text-xs text-zinc-500">
+                Stored securely in your local system files.
+              </p>
+            </div>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <label
+                class="block text-xs font-semibold text-zinc-400 mb-1.5 ml-1"
+                >Email Address</label
+              >
+              <input
+                id="input-email"
+                type="email"
+                placeholder="hello@mindyourlogic.com"
+                class="w-full bg-surface-base border border-surface-border rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
+              />
+            </div>
+            <div>
+              <label
+                class="block text-xs font-semibold text-zinc-400 mb-1.5 ml-1"
+                >Password</label
+              >
+              <input
+                id="input-password"
+                type="password"
+                placeholder="••••••••••••"
+                class="w-full bg-surface-base border border-surface-border rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all"
+              />
+            </div>
+          </div>
+        </div>
+        <div
+          class="px-6 py-4 bg-surface-base/50 border-t border-surface-border flex items-center justify-end gap-3"
+        >
+          <button
+            onclick="cancelCredsModal()"
+            class="px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onclick="saveCredentials()"
+            class="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-black font-bold text-xs transition-colors shadow-lg shadow-brand-500/20 active:scale-95"
+          >
+            Save Details
+          </button>
+        </div>
+      </div>
+
+      <!-- DATE PICKER MODAL -->
+      <div
+        id="modal-date"
+        class="hidden transform scale-95 opacity-0 transition-all duration-300 w-full max-w-sm bg-surface-card border border-surface-border rounded-2xl shadow-2xl overflow-hidden"
+      >
+        <div class="p-6">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="p-2 rounded-lg bg-brand-500/10 text-brand-500">
+              <i data-lucide="calendar-days" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-white font-bold tracking-tight">
+                Target Cohort Date
+              </h3>
+              <p class="text-xs text-zinc-500">
+                Select the date to pull DP1 metrics for.
+              </p>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <!-- 3. Modern Flatpickr UI Container -->
+            <div class="relative">
+              <input
+                id="input-date"
+                type="text"
+                readonly
+                placeholder="Select Date..."
+                class="w-full bg-surface-base border border-surface-border rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition-all cursor-pointer"
+              />
+              <i
+                data-lucide="calendar"
+                class="absolute left-3.5 top-3.5 w-4 h-4 text-zinc-500"
+              ></i>
+            </div>
+
+            <!-- 4 & 5. Preset Buttons with 7-Days Disabled -->
+            <div
+              class="grid grid-cols-3 gap-2 pt-2 border-t border-surface-border/50"
+            >
+              <button
+                id="btn-preset-yesterday"
+                onclick="setPresetDate('yesterday')"
+                class="preset-btn p-2 rounded-lg text-xs font-semibold transition-colors bg-surface-base hover:bg-surface-hover border border-surface-border text-zinc-300"
+              >
+                Yesterday
+              </button>
+              <button
+                id="btn-preset-today"
+                onclick="setPresetDate('today')"
+                class="preset-btn p-2 rounded-lg text-xs font-semibold transition-colors bg-surface-base hover:bg-surface-hover border border-surface-border text-zinc-300"
+              >
+                Today
+              </button>
+              <button
+                id="btn-preset-7days"
+                disabled
+                class="p-2 rounded-lg bg-surface-base/30 border border-surface-border/50 text-xs font-semibold text-zinc-600 cursor-not-allowed"
+              >
+                Last 7 Days
+              </button>
+            </div>
+          </div>
+        </div>
+        <div
+          class="px-6 py-4 bg-surface-base/50 border-t border-surface-border flex items-center justify-end gap-3"
+        >
+          <button
+            onclick="closeModal('modal-date')"
+            class="px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onclick="saveDate()"
+            class="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-black font-bold text-xs transition-colors shadow-lg shadow-brand-500/20 active:scale-95"
+          >
+            Set Date
+          </button>
+        </div>
+      </div>
+    </div>
+    <script>
+      lucide.createIcons();
+
+      let tasksData = { dp1: [], all_geo: [] };
+      let isCollapsed = { dp1: true, all_geo: true };
+      let currentIsoDate = "";
+      let flatpickrInstance = null;
+
+      // Format Date Display (Smart Yesterday/Today or DD-MMM-YYYY)
+      function formatDateDisplay(dateStr) {
+        if (!dateStr) return "";
+
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const todayStr = today.toISOString().split("T")[0];
+        const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+        if (dateStr === todayStr) return "Today";
+        if (dateStr === yesterdayStr) return "Yesterday";
+
+        const [y, m, d] = dateStr.split("-");
+        const months = [
+          "Jan",
+          "Feb",
+          "Mar",
+          "Apr",
+          "May",
+          "Jun",
+          "Jul",
+          "Aug",
+          "Sep",
+          "Oct",
+          "Nov",
+          "Dec",
+        ];
+        return `${d}-${months[parseInt(m) - 1]}-${y}`;
+      }
+
+      window.addEventListener("pywebviewready", async () => {
+        if (window.pywebview && window.pywebview.api) {
+          const state = await window.pywebview.api.get_initial_state();
+          currentIsoDate = state.selected_date;
+
+          document.getElementById("label-selected-date").innerText =
+            formatDateDisplay(currentIsoDate);
+
+          flatpickrInstance = flatpickr("#input-date", {
+            defaultDate: currentIsoDate,
+            dateFormat: "Y-m-d",
+            disableMobile: true,
+            onChange: function (selectedDates, dateStr, instance) {
+              updatePresetHighlight(dateStr);
+            },
+          });
+
+          await refreshTasks();
+        }
+      });
+
+      // --- TASK QUEUE LOGIC ---
+      async function refreshTasks() {
+        const iconWrap = document.getElementById("icon-refresh-wrap");
+        const label = document.getElementById("label-refresh");
+        const statusText = document.getElementById("system-status-text");
+
+        if (iconWrap) iconWrap.classList.add("animate-spin");
+        if (label) label.innerText = "Pulling...";
+        if (statusText) statusText.innerText = "Syncing RulesBook...";
+
+        try {
+          if (window.pywebview && window.pywebview.api) {
+            tasksData = await window.pywebview.api.load_tasks_from_sheet();
+            renderTasks("dp1", tasksData.dp1 || []);
+            renderTasks("all_geo", tasksData.all_geo || []);
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          if (iconWrap) iconWrap.classList.remove("animate-spin");
+          if (label) label.innerText = "Refresh Pull";
+          if (statusText) statusText.innerText = "MindYourLogic Studios";
+        }
+      }
+
+      function renderTasks(queue, tasks) {
+        const container = document.getElementById(`tasks-container-${queue}`);
+        const badge = document.getElementById(`badge-task-count-${queue}`);
+        badge.innerText = `${tasks.length} Active`;
+
+        if (!tasks || tasks.length === 0) {
+          container.innerHTML = `
+          <div class="p-8 text-center text-xs text-zinc-500">
+            No active tasks found in Google Sheet.
+          </div>`;
+          return;
+        }
+
+        container.innerHTML = tasks
+          .map((t, idx) => {
+            const title = t["Game Name"] || t["Game ID"] || "Unnamed Game";
+            const outputName = t["Output Name"] || title;
+            const initials = title
+              .split(" ")
+              .map((n) => n[0])
+              .slice(0, 2)
+              .join("")
+              .toUpperCase();
+
+            const iconUrl = t["Playstore Icon"];
+            const avatarContent = iconUrl
+              ? `<img src="${iconUrl}" alt="Icon" class="w-full h-full object-cover rounded-xl shadow-sm" onerror="this.outerHTML='${initials}'" />`
+              : initials;
+
+            return `
+          <div id="task-card-${queue}-${idx}" data-search="${title.toLowerCase()} ${outputName.toLowerCase()}" class="group relative p-3.5 rounded-xl border border-surface-border bg-surface-base/60 hover:bg-surface-hover/80 hover:border-zinc-700 transition-all duration-200 overflow-hidden">
+            
+            <!-- Progress Bar Layer -->
+            <div id="progress-bar-${queue}-${idx}" class="absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] ease-out"></div>
+            
+            <!-- Card Content -->
+            <div class="relative z-10 flex items-center justify-between">
+              <div class="flex items-center gap-3.5">
+                <div class="shrink-0 h-10 w-10 rounded-xl bg-gradient-to-br from-zinc-800 to-zinc-900 border border-zinc-700/60 flex items-center justify-center font-bold text-xs text-zinc-300 shadow-inner group-hover:border-brand-500/50 group-hover:text-brand-500 transition-colors">
+                  ${avatarContent}
+                </div>
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <span class="font-semibold text-sm text-zinc-100">${title}</span>
+                    ${t["Country"] ? `<span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-950 text-blue-400 border border-blue-800/40">${t["Country"]}</span>` : ""}
+                  </div>
+                  <div class="flex items-center gap-1.5 text-[11px] font-mono text-zinc-500 opacity-80">
+                    <i data-lucide="file-spreadsheet" class="w-3 h-3 text-zinc-600"></i>
+                    <span class="truncate max-w-sm tracking-tight">${outputName}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div id="task-error-${queue}-${idx}" class="hidden mr-1"></div>
+                <button id="btn-task-${queue}-${idx}" onclick="runSingle('${queue}', ${idx})" class="px-3.5 py-1.5 rounded-lg bg-surface-card hover:bg-brand-600 text-zinc-300 hover:text-black font-semibold text-xs border border-surface-border hover:border-brand-500 transition-all active:scale-95">
+                  Run
+                </button>
+              </div>
+            </div>
+          </div>`;
+          })
+          .join("");
+
+        lucide.createIcons();
+      }
+
+      function filterTasks(queue) {
+        const query = document
+          .getElementById(`input-search-${queue}`)
+          .value.toLowerCase();
+        const container = document.getElementById(`tasks-container-${queue}`);
+        const cards = container.children;
+
+        Array.from(cards).forEach((card) => {
+          if (!card.id || !card.id.startsWith(`task-card-${queue}-`)) return;
+
+          const searchData = card.getAttribute("data-search") || "";
+          if (searchData.includes(query)) {
+            card.style.display = "";
+          } else {
+            card.style.display = "none";
+          }
+        });
+      }
+
+      function toggleCollapse(queue) {
+        isCollapsed[queue] = !isCollapsed[queue];
+        const container = document.getElementById(`tasks-container-${queue}`);
+        const icon = document.getElementById(`icon-collapse-${queue}`);
+        if (isCollapsed[queue]) {
+          container.classList.add("hidden");
+          icon.classList.add("-rotate-90");
+        } else {
+          container.classList.remove("hidden");
+          icon.classList.remove("-rotate-90");
+        }
+      }
+
+      window.activeTasksTracker = new Set();
+
+      function checkDateLock() {
+        const btnDate = document.getElementById("btn-date");
+        if (window.activeTasksTracker.size > 0) {
+          btnDate.disabled = true;
+          btnDate.title = "Tasks are running. Date selection locked.";
+          btnDate.classList.add("opacity-50", "cursor-not-allowed");
+        } else {
+          btnDate.disabled = false;
+          btnDate.title = "";
+          btnDate.classList.remove("opacity-50", "cursor-not-allowed");
+        }
+      }
+
+      async function runSingle(queue, idx) {
+        const targetDate =
+          document.getElementById("input-date").value || currentIsoDate;
+        if (window.pywebview && window.pywebview.api) {
+          await window.pywebview.api.run_single_task(queue, idx, targetDate);
+        }
+      }
+
+      async function runAll(queue, startIdx = 0) {
+        const targetDate =
+          document.getElementById("input-date").value || currentIsoDate;
+        if (window.pywebview && window.pywebview.api) {
+          await window.pywebview.api.run_all_tasks(queue, targetDate, startIdx);
+        }
+      }
+
+      async function killTask() {
+        if (window.pywebview && window.pywebview.api) {
+          await window.pywebview.api.kill_task();
+          appendLog(
+            "[System] Termination signal sent. Aborting...",
+            null,
+            null,
+          );
+        }
+      }
+
+      function resetTaskUI(queue, idx) {
+        const btn = document.getElementById(`btn-task-${queue}-${idx}`);
+        const progressBar = document.getElementById(
+          `progress-bar-${queue}-${idx}`,
+        );
+        const errorBadge = document.getElementById(
+          `task-error-${queue}-${idx}`,
+        );
+
+        if (btn) {
+          btn.setAttribute("onclick", `runSingle('${queue}', ${idx})`);
+          btn.className =
+            "px-3.5 py-1.5 rounded-lg bg-surface-card hover:bg-brand-600 text-zinc-300 hover:text-black font-semibold text-xs border border-surface-border hover:border-brand-500 transition-all active:scale-95";
+          btn.innerHTML = "Run";
+        }
+
+        if (progressBar) {
+          progressBar.style.transitionDuration = "0s";
+          progressBar.style.width = "0%";
+          progressBar.className =
+            "absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] ease-out";
+        }
+        if (errorBadge) errorBadge.classList.add("hidden");
+      }
+
+      function updateTaskStatus(queue, idx, status) {
+        const btn = document.getElementById(`btn-task-${queue}-${idx}`);
+        const card = document.getElementById(`task-card-${queue}-${idx}`);
+        const progressBar = document.getElementById(
+          `progress-bar-${queue}-${idx}`,
+        );
+        const errorBadge = document.getElementById(
+          `task-error-${queue}-${idx}`,
+        );
+        if (!btn) return;
+
+        const key = `${queue}-${idx}`;
+
+        if (status === "Aborted") {
+          window.activeTasksTracker.delete(key);
+          checkDateLock();
+          resetTaskUI(queue, idx);
+          return;
+        }
+
+        if (status === "Running") {
+          window.activeTasksTracker.add(key);
+          checkDateLock();
+
+          if (errorBadge) errorBadge.classList.add("hidden");
+          btn.disabled = false;
+          btn.setAttribute("onclick", `killTask()`);
+          btn.className =
+            "px-3.5 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-600 text-rose-400 hover:text-white font-semibold text-xs border border-rose-500/30 transition-all flex items-center gap-1.5 group";
+          btn.innerHTML = `<i data-lucide="x-octagon" class="w-3.5 h-3.5 group-hover:animate-pulse"></i> Kill`;
+          card.classList.add("border-brand-500/40");
+
+          if (progressBar) {
+            progressBar.style.transitionDuration = "0s";
+            progressBar.className =
+              "absolute inset-y-0 left-0 pointer-events-none animate-sweep";
+            void progressBar.offsetWidth;
+
+            window.taskProgressState = window.taskProgressState || {};
+            window.taskProgressState[key] = {
+              currentFunnel: 1,
+              totalFunnels: 1,
+              maxReached: 2,
+            };
+          }
+        } else if (status === "Completed") {
+          window.activeTasksTracker.delete(key);
+          checkDateLock();
+
+          if (errorBadge) errorBadge.classList.add("hidden");
+          btn.disabled = false;
+          btn.setAttribute("onclick", `resetTaskUI('${queue}', ${idx})`);
+          btn.className =
+            "px-3.5 py-1.5 rounded-lg bg-brand-500/10 text-brand-500 font-semibold text-xs border border-brand-500/30 hover:bg-brand-500 hover:text-black transition-all flex items-center gap-1 cursor-pointer";
+          btn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i> Done`;
+          card.classList.remove("border-brand-500/40");
+
+          if (progressBar) {
+            progressBar.className =
+              "absolute inset-y-0 left-0 bg-gradient-to-r from-brand-600/30 to-brand-500/10 pointer-events-none ease-out";
+            progressBar.style.transitionDuration = "0.5s";
+            progressBar.style.width = "100%";
+          }
+        } else if (status === "Failed") {
+          window.activeTasksTracker.delete(key);
+          checkDateLock();
+
+          btn.disabled = false;
+          btn.setAttribute("onclick", `runSingle('${queue}', ${idx})`);
+          btn.className =
+            "px-3.5 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 font-semibold text-xs border border-rose-500/30 hover:bg-rose-500 hover:text-white transition-all flex items-center gap-1";
+          btn.innerHTML = `<i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Retry`;
+          card.classList.remove("border-brand-500/40");
+
+          if (progressBar) {
+            progressBar.className =
+              "absolute inset-y-0 left-0 bg-gradient-to-r from-rose-600/30 to-rose-500/10 pointer-events-none ease-out";
+            progressBar.style.transitionDuration = "0.5s";
+            progressBar.style.width = "100%";
+          }
+
+          if (errorBadge) {
+            const errType =
+              window.taskProgressState &&
+              window.taskProgressState[key] &&
+              window.taskProgressState[key].errorType
+                ? window.taskProgressState[key].errorType
+                : "fatal";
+
+            errorBadge.classList.remove("hidden");
+            if (errType === "timeout") {
+              errorBadge.innerHTML = `<span class="px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-bold border border-amber-500/20 shadow-sm flex items-center gap-1.5"><i data-lucide="clock-4" class="w-3 h-3"></i> ByteBrew timed out loading data</span>`;
+            } else if (errType === "login") {
+              errorBadge.innerHTML = `<span class="px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-400 text-[10px] font-bold border border-rose-500/20 shadow-sm flex items-center gap-1.5"><i data-lucide="key" class="w-3 h-3"></i> Login expired or invalid</span>`;
+            } else if (errType === "filter") {
+              errorBadge.innerHTML = `<span class="px-2.5 py-1 rounded-md bg-orange-500/10 text-orange-400 text-[10px] font-bold border border-orange-500/20 shadow-sm flex items-center gap-1.5"><i data-lucide="filter-x" class="w-3 h-3"></i> Filter missing in ByteBrew</span>`;
+            } else {
+              errorBadge.innerHTML = `<span class="px-2.5 py-1 rounded-md bg-rose-500/10 text-rose-400 text-[10px] font-bold border border-rose-500/20 shadow-sm flex items-center gap-1.5"><i data-lucide="alert-triangle" class="w-3 h-3"></i> System error — check log</span>`;
+            }
+          }
+        }
+        lucide.createIcons();
+      }
+
+      function setRunAllState(queue, isRunning, current = 0, total = 0) {
+        const btn = document.getElementById(`btn-run-all-${queue}`);
+        const headerBar = document.getElementById(
+          `header-progress-bar-${queue}`,
+        );
+
+        window.isRunAllActive = window.isRunAllActive || {};
+        window.isRunAllActive[queue] = isRunning;
+
+        if (isRunning) {
+          btn.disabled = false;
+          btn.setAttribute("onclick", "killTask()");
+          btn.className =
+            "group flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs shadow-lg shadow-rose-500/20 transition-all duration-200 active:scale-95";
+          btn.innerHTML = `<i data-lucide="x-octagon" class="w-3.5 h-3.5"></i> <span id="label-run-all-${queue}">Kill All (${current}/${total})</span>`;
+
+          if (headerBar) {
+            headerBar.className =
+              "absolute inset-y-0 left-0 bg-gradient-to-r from-brand-600/30 to-brand-500/10 border-r border-brand-500/40 pointer-events-none transition-[width] duration-500 ease-out";
+            if (current === 0) {
+              headerBar.style.width = "0%";
+            }
+          }
+        }
+        lucide.createIcons();
+      }
+
+      function setRunAllCompleted(queue, successCount, total) {
+        const btn = document.getElementById(`btn-run-all-${queue}`);
+        const headerBar = document.getElementById(
+          `header-progress-bar-${queue}`,
+        );
+
+        window.isRunAllActive = window.isRunAllActive || {};
+        window.isRunAllActive[queue] = false;
+
+        if (btn) {
+          btn.disabled = false;
+          btn.setAttribute("onclick", `resetRunAllUI('${queue}')`);
+
+          if (successCount === total && total > 0) {
+            btn.className =
+              "group flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-brand-500/20 text-brand-400 font-bold text-xs border border-brand-500/30 hover:bg-brand-500 hover:text-black transition-all duration-200 active:scale-95 cursor-pointer";
+            btn.innerHTML = `<i data-lucide="check-check" class="w-3.5 h-3.5"></i> <span id="label-run-all-${queue}">Done All</span>`;
+          } else {
+            btn.className =
+              "group flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-400 font-bold text-xs border border-amber-500/30 hover:bg-amber-500 hover:text-black transition-all duration-200 active:scale-95 cursor-pointer";
+            btn.innerHTML = `<i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> <span id="label-run-all-${queue}">${successCount}/${total} Done</span>`;
+          }
+        }
+
+        if (headerBar) {
+          headerBar.style.width = "100%";
+          if (successCount === total && total > 0) {
+            headerBar.className =
+              "absolute inset-y-0 left-0 bg-gradient-to-r from-brand-600/30 to-brand-500/10 border-r border-brand-500/40 pointer-events-none transition-[width] duration-500 ease-out";
+          } else {
+            headerBar.className =
+              "absolute inset-y-0 left-0 bg-gradient-to-r from-rose-600/30 to-rose-500/10 border-r border-rose-500/40 pointer-events-none transition-[width] duration-500 ease-out";
+          }
+        }
+        lucide.createIcons();
+      }
+
+      function resetRunAllUI(queue) {
+        const btn = document.getElementById(`btn-run-all-${queue}`);
+        const headerBar = document.getElementById(
+          `header-progress-bar-${queue}`,
+        );
+
+        if (btn) {
+          btn.setAttribute("onclick", `runAll('${queue}')`);
+          btn.className =
+            "group flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-black font-bold text-xs shadow-lg shadow-brand-500/10 hover:shadow-brand-500/25 transition-all duration-200 active:scale-95";
+          btn.innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5 fill-black"></i> <span id="label-run-all-${queue}">Run All</span>`;
+        }
+
+        if (headerBar) {
+          headerBar.style.transitionDuration = "0s";
+          headerBar.style.width = "0%";
+          headerBar.className =
+            "absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] duration-500 ease-out";
+        }
+
+        // Mass-Reset all inside game pills for this queue to normalize UI
+        if (tasksData && tasksData[queue]) {
+          for (let i = 0; i < tasksData[queue].length; i++) {
+            resetTaskUI(queue, i);
+          }
+        }
+
+        lucide.createIcons();
+      }
+
+      // --- TERMINAL LOGIC ---
+      let isTerminalOpen = false;
+
+      function toggleTerminal() {
+        isTerminalOpen = !isTerminalOpen;
+        const drawer = document.getElementById("terminal-drawer");
+        const chevron = document.getElementById("terminal-chevron");
+
+        if (isTerminalOpen) {
+          drawer.classList.remove("translate-y-[calc(100%-2.5rem)]");
+          drawer.classList.add("translate-y-0");
+          chevron.classList.add("rotate-180");
+        } else {
+          drawer.classList.add("translate-y-[calc(100%-2.5rem)]");
+          drawer.classList.remove("translate-y-0");
+          chevron.classList.remove("rotate-180");
+        }
+      }
+
+      function appendLog(msg, queue = null, idx = null) {
+        const container = document.getElementById("log-container");
+        const miniLog = document.getElementById("mini-log-text");
+        const ping = document.getElementById("log-ping");
+
+        ping.classList.add("animate-ping", "opacity-75");
+        setTimeout(
+          () => ping.classList.remove("animate-ping", "opacity-75"),
+          500,
+        );
+
+        let formattedMsg = msg
+          .replace(
+            /`Clicker`/g,
+            '<span class="bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded text-[10.5px] font-bold border border-blue-500/20 shadow-sm shadow-blue-500/10">Clicker</span>',
+          )
+          .replace(
+            /`Checker`/g,
+            '<span class="bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded text-[10.5px] font-bold border border-emerald-500/20 shadow-sm shadow-emerald-500/10">Checker</span>',
+          )
+          .replace(
+            /\[ByteBrew\]/g,
+            '<span class="text-zinc-500">[ByteBrew]</span>',
+          )
+          .replace(
+            /\[Aborted\]/g,
+            '<span class="text-amber-500 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shadow-sm">Aborted</span>',
+          )
+          .replace(
+            /(Error|FATAL|Failed|Timeout)/gi,
+            '<span class="text-rose-500 font-bold bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20 shadow-sm">$&</span>',
+          );
+
+        const time = new Date().toLocaleTimeString("en-US", { hour12: false });
+        const logLine = `<div class="text-zinc-300 break-words hover:bg-white/[0.02] px-1 py-0.5 rounded transition-colors"><span class="text-zinc-600 mr-2">[${time}]</span>${formattedMsg}</div>`;
+
+        container.insertAdjacentHTML("beforeend", logLine);
+
+        const key =
+          queue && idx !== null && idx !== "null" ? `${queue}-${idx}` : null;
+
+        if (msg.includes("[Error executing") || msg.includes("FATAL")) {
+          const text = msg.toLowerCase();
+          let errType = "fatal";
+          let simpleMsg = "System error occurred. Check execution_log.txt.";
+
+          if (text.includes("120 seconds") || text.includes("timeout")) {
+            errType = "timeout";
+            simpleMsg = "ByteBrew timed out loading data. Safe to retry.";
+          } else if (text.includes("login") || text.includes("credentials")) {
+            errType = "login";
+            simpleMsg = "Login expired or invalid. Please check Login Info.";
+          } else if (
+            text.includes("not found") ||
+            text.includes("wipe") ||
+            text.includes("mismatch") ||
+            text.includes("stray")
+          ) {
+            errType = "filter";
+            simpleMsg =
+              "Filter not found or invalid. Check preset in RulesBook.";
+          }
+
+          if (key) {
+            window.taskProgressState = window.taskProgressState || {};
+            if (!window.taskProgressState[key])
+              window.taskProgressState[key] = {};
+            window.taskProgressState[key].errorType = errType;
+
+            const titleMatch = msg.match(/\[Error executing ([^\]]+)\]/);
+            const gameName = titleMatch ? titleMatch[1] : "Task";
+
+            miniLog.innerHTML = `<span class="text-rose-400 font-semibold">${gameName} failed:</span> <span class="text-zinc-400">${simpleMsg}</span>`;
+          } else {
+            miniLog.innerHTML = `<span class="text-rose-400 font-semibold">System Alert:</span> <span class="text-zinc-400">${simpleMsg}</span>`;
+          }
+        } else {
+          miniLog.innerHTML = formattedMsg;
+        }
+
+        container.scrollTop = container.scrollHeight;
+
+        if (key) {
+          const bar = document.getElementById(`progress-bar-${key}`);
+          if (
+            bar &&
+            window.taskProgressState &&
+            window.taskProgressState[key]
+          ) {
+            if (bar.classList.contains("animate-sweep")) {
+              bar.className =
+                "absolute inset-y-0 left-0 bg-gradient-to-r from-brand-600/40 to-brand-500/20 pointer-events-none transition-[width] duration-700 ease-out";
+              bar.style.width = "2%";
+            }
+
+            const state = window.taskProgressState[key];
+            const text = msg.toLowerCase();
+
+            const funnelMatch = msg.match(/Funnel (\d+)\/(\d+)/i);
+            if (funnelMatch) {
+              state.currentFunnel = parseInt(funnelMatch[1]);
+              state.totalFunnels = parseInt(funnelMatch[2]);
+            }
+
+            const bucketSize = 90 / state.totalFunnels;
+            const baseProgress = (state.currentFunnel - 1) * bucketSize;
+            let stepPercent = null;
+
+            if (text.includes("opening game dashboard")) stepPercent = 0.1;
+            else if (text.includes("dashboard loaded successfully"))
+              stepPercent = 0.2;
+            else if (text.includes("setting main date")) stepPercent = 0.3;
+            else if (text.includes("opening saved preset")) stepPercent = 0.4;
+            else if (text.includes("filters selected")) stepPercent = 0.55;
+            else if (text.includes("applying filters")) stepPercent = 0.65;
+            else if (text.includes("waiting for table to load"))
+              stepPercent = 0.75;
+            else if (text.includes("triggering csv download"))
+              stepPercent = 0.85;
+            else if (text.includes("finished '")) stepPercent = 1.0;
+
+            if (text.includes("processing final excel report")) {
+              state.maxReached = 95;
+              bar.style.width = "95%";
+            } else if (
+              text.includes("cleaned temporary raw files") ||
+              text.includes("final report created")
+            ) {
+              state.maxReached = 98;
+              bar.style.width = "98%";
+            } else if (stepPercent !== null) {
+              const targetW = baseProgress + stepPercent * bucketSize;
+              if (targetW > state.maxReached) {
+                state.maxReached = targetW;
+                bar.style.width = targetW + "%";
+              }
+            }
+
+            // Sync Header Cumulative Progress Bar during "Run All"
+            if (
+              window.isRunAllActive &&
+              window.isRunAllActive[queue] &&
+              tasksData[queue] &&
+              tasksData[queue].length > 0
+            ) {
+              const totalTasks = tasksData[queue].length;
+              const currentTaskProgress = state.maxReached || 0;
+              const overallPercent =
+                (idx * 100 + currentTaskProgress) / totalTasks;
+              const headerBar = document.getElementById(
+                `header-progress-bar-${queue}`,
+              );
+              if (headerBar) {
+                headerBar.style.width = `${Math.min(overallPercent, 99)}%`;
+              }
+            }
+          }
+        }
+      }
+
+      function clearLogs() {
+        document.getElementById("log-container").innerHTML = "";
+        document.getElementById("mini-log-text").innerText = "Logs cleared.";
+      }
+
+      // --- TOP NAV BUTTON LOGIC ---
+      async function onRefreshClick() {
+        await refreshTasks();
+      }
+
+      async function onFolderClick() {
+        const targetDate =
+          document.getElementById("input-date").value || currentIsoDate;
+        if (window.pywebview && window.pywebview.api)
+          await window.pywebview.api.open_output_folder(targetDate);
+      }
+
+      // --- MODAL LOGIC ---
+      function openModal(modalId) {
+        const backdrop = document.getElementById("modal-backdrop");
+        const modal = document.getElementById(modalId);
+        backdrop.classList.remove("hidden");
+        modal.classList.remove("hidden");
+        setTimeout(() => {
+          backdrop.classList.remove("opacity-0");
+          modal.classList.remove("opacity-0", "scale-95");
+        }, 10);
+      }
+
+      function closeModal(modalId) {
+        const backdrop = document.getElementById("modal-backdrop");
+        const modal = document.getElementById(modalId);
+        backdrop.classList.add("opacity-0");
+        modal.classList.add("opacity-0", "scale-95");
+        setTimeout(() => {
+          backdrop.classList.add("hidden");
+          modal.classList.add("hidden");
+        }, 300);
+      }
+
+      async function onCredsClick() {
+        if (window.pywebview && window.pywebview.api) {
+          const creds = await window.pywebview.api.get_credentials();
+          document.getElementById("input-email").value = creds.email || "";
+          document.getElementById("input-password").value =
+            creds.password || "";
+        }
+        openModal("modal-creds");
+      }
+
+      let pendingRecovery = null;
+
+      function triggerLoginRecovery(queue, idx, isRunAll) {
+        pendingRecovery = { queue, idx, isRunAll };
+        onCredsClick();
+        setTimeout(() => {
+          const modalTitle = document.querySelector("#modal-creds h3");
+          if (modalTitle) {
+            modalTitle.innerHTML = `<span class="text-rose-400">Action Required:</span> ByteBrew Login`;
+          }
+        }, 50);
+      }
+
+      function cancelCredsModal() {
+        pendingRecovery = null;
+        closeModal("modal-creds");
+        setTimeout(() => {
+          const modalTitle = document.querySelector("#modal-creds h3");
+          if (modalTitle) modalTitle.innerHTML = `ByteBrew Credentials`;
+        }, 300);
+      }
+
+      async function saveCredentials() {
+        const email = document.getElementById("input-email").value.trim();
+        const pwd = document.getElementById("input-password").value.trim();
+        if (window.pywebview && window.pywebview.api) {
+          await window.pywebview.api.save_credentials(email, pwd);
+          appendLog("[System] Credentials saved securely to disk.");
+        }
+        closeModal("modal-creds");
+
+        setTimeout(() => {
+          const modalTitle = document.querySelector("#modal-creds h3");
+          if (modalTitle) modalTitle.innerHTML = `ByteBrew Credentials`;
+        }, 300);
+
+        if (pendingRecovery) {
+          const rec = pendingRecovery;
+          pendingRecovery = null;
+          setTimeout(() => {
+            appendLog(
+              `[System] Resuming execution automatically...`,
+              null,
+              null,
+            );
+            if (rec.isRunAll) {
+              runAll(rec.queue, rec.idx);
+            } else {
+              runSingle(rec.queue, rec.idx);
+            }
+          }, 400);
+        }
+      }
+
+      // --- DATE PICKER LOGIC ---
+      function updatePresetHighlight(dateStr) {
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const todayStr = today.toISOString().split("T")[0];
+        const yesterdayStr = yesterday.toISOString().split("T")[0];
+
+        const btnYesterday = document.getElementById("btn-preset-yesterday");
+        const btnToday = document.getElementById("btn-preset-today");
+
+        const activeClasses =
+          "bg-brand-500/20 border-brand-500/50 text-brand-500".split(" ");
+        const inactiveClasses =
+          "bg-surface-base hover:bg-surface-hover border-surface-border text-zinc-300".split(
+            " ",
+          );
+
+        btnYesterday.classList.remove(...activeClasses);
+        btnYesterday.classList.add(...inactiveClasses);
+        btnToday.classList.remove(...activeClasses);
+        btnToday.classList.add(...inactiveClasses);
+
+        if (dateStr === yesterdayStr) {
+          btnYesterday.classList.remove(...inactiveClasses);
+          btnYesterday.classList.add(...activeClasses);
+        } else if (dateStr === todayStr) {
+          btnToday.classList.remove(...inactiveClasses);
+          btnToday.classList.add(...activeClasses);
+        }
+      }
+
+      function onDatePickerClick() {
+        if (window.activeTasksTracker && window.activeTasksTracker.size > 0)
+          return;
+        if (!flatpickrInstance) return;
+        flatpickrInstance.setDate(currentIsoDate);
+        updatePresetHighlight(currentIsoDate);
+        openModal("modal-date");
+      }
+
+      function setPresetDate(preset) {
+        if (!flatpickrInstance) return;
+
+        const d = new Date();
+        if (preset === "yesterday") {
+          d.setDate(d.getDate() - 1);
+        }
+        const iso = d.toISOString().split("T")[0];
+        flatpickrInstance.setDate(iso);
+        updatePresetHighlight(iso);
+      }
+
+      async function saveDate() {
+        const newIsoDate = document.getElementById("input-date").value;
+        if (!newIsoDate) return;
+
+        currentIsoDate = newIsoDate;
+        document.getElementById("label-selected-date").innerText =
+          formatDateDisplay(newIsoDate);
+        appendLog(`[System] Target cohort date updated to: ${newIsoDate}`);
+        closeModal("modal-date");
+      }
+    </script>
+  </body>
+</html>
