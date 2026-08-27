@@ -54,22 +54,32 @@ DEBUG_DIR = SYSTEM_DIR / "debug"
 
 LOG_CALLBACK = None
 CURRENT_DATE_DIR = None  # Global tracker to ensure logs and screenshots route to the exact daily folder
+CURRENT_QUEUE_TYPE = "dp1"  # Global tracker to split logs between DP1 and All Geo
 
 def log(message):
-    global CURRENT_DATE_DIR
+    global CURRENT_DATE_DIR, CURRENT_QUEUE_TYPE
     msg_str = f"[ByteBrew] {message}"
-    print(msg_str, flush=True)
+    
+    # Bulletproof terminal print: Prevent CMD thread crashes from emojis and em-dashes
+    try:
+        print(msg_str, flush=True)
+    except UnicodeEncodeError:
+        safe_encoding = sys.stdout.encoding if sys.stdout.encoding else 'ascii'
+        safe_str = msg_str.encode(safe_encoding, errors='replace').decode(safe_encoding)
+        print(safe_str, flush=True)
+        
     if LOG_CALLBACK:
         try:
             LOG_CALLBACK(msg_str)
         except Exception:
             pass
             
-    # Requirement 4: Append all terminal output to a master execution_log.txt in the daily folder
+    # Requirement 4: Append all terminal output to a segregated master log in the daily folder
     if CURRENT_DATE_DIR:
         try:
             CURRENT_DATE_DIR.mkdir(parents=True, exist_ok=True)
-            with open(CURRENT_DATE_DIR / "execution_log.txt", "a", encoding="utf-8") as f:
+            log_filename = f"execution_log_{CURRENT_QUEUE_TYPE}.txt"
+            with open(CURRENT_DATE_DIR / log_filename, "a", encoding="utf-8") as f:
                 f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg_str}\n")
         except Exception:
             pass
@@ -122,7 +132,7 @@ def load_games():
     headers = [cell_text(c.value) for c in ws[1]]
     required = {
         "Order", "Active", "Game Name", "Game ID", "Page", "Saved Funnel 1",
-        "Saved Funnel 2", "Date Range", "Output Name"
+        "Saved Funnel 2", "Output Name"
     }
     missing = sorted(required - set(headers))
     if missing:
@@ -160,7 +170,7 @@ def load_games():
                     cell_text(data.get("Saved Funnel 2")),
                 ] if f
             ],
-            "date_range": cell_text(data.get("Date Range")) or "Yesterday",
+            "date_range": "Yesterday",
             "build_version": cell_text(data.get("Build Version")),
             "country": cell_text(data.get("Country")),
             "output_name": cell_text(data.get("Output Name")) or game_name or game_id,
@@ -262,7 +272,7 @@ def wait_for_login_if_needed(page, target_url, email=None, password=None):
 
 def open_game(page, game, email=None, password=None):
     url = f'{BASE_URL}/{game["game_id"]}/{game["page"]}'
-    log(f'Opening {game["game_name"]}: {url}')
+    log("Opening game dashboard...")
 
     # Bulletproof Double-Tap: Try loading up to 3 times to survive ByteBrew server chokes
     for attempt in range(1, 4):
@@ -289,7 +299,7 @@ def open_game(page, game, email=None, password=None):
                 page.wait_for_timeout(3000)
 
     page.wait_for_timeout(1500)
-    log(f'{game["game_name"]} Funnel Explorer opened.')
+    log("Dashboard loaded successfully.")
 
 
 def set_date_range(page, preset, game_name):
@@ -302,7 +312,7 @@ def set_date_range(page, preset, game_name):
     target_day = target_dt.day
 
     for attempt in range(1, 4):
-        log(f"[Clicker] Setting Top Date Range to: '{target_iso}' (Attempt {attempt})...")
+        log(f"`Clicker` Setting main date to {target_iso}...")
         
         if attempt > 1:
             # Click neutral background space to reset state instead of Escape (which cancels)
@@ -465,7 +475,7 @@ def set_date_range(page, preset, game_name):
             page.mouse.click(10, 10)
             page.wait_for_timeout(500)
 
-        log(f"[Checker] Verifying Top Date Range updated to '{target_iso}'...")
+        log("`Checker` Checking main calendar date...")
         try:
             # Target the absolute hardcoded ID from your inspection
             active_date_btn = page.locator('#daterange-btn, button:has-text(" - "), [role="button"]:has-text(" - ")').first
@@ -485,27 +495,27 @@ def set_date_range(page, preset, game_name):
                 page.wait_for_timeout(500)
                 
             if success:
-                log(f"[Checker] Success: Top Date Range visually confirmed as '{btn_text}'.")
+                log(f"`Checker` Main date confirmed: {target_iso}.")
                 return
             else:
-                log(f"[Checker] Mismatch: UI shows '{btn_text}'. Retrying date selection...")
+                log(f"`Checker` Mismatch: UI shows '{btn_text}'. Retrying date selection...")
         except Exception as e:
-            log(f"[Checker] Error while reading Top Date text ({e}). Retrying...")
+            log(f"`Checker` Error while reading Top Date text ({e}). Retrying...")
 
     screenshot(page, game_name, "top_date_verification_failed")
-    raise RuntimeError(f"[Checker] FATAL: Failed to verify Top Date Range set to '{target_iso}' after 3 attempts.")
+    raise RuntimeError(f"`Checker` FATAL: Failed to verify Top Date Range set to '{target_iso}' after 3 attempts.")
 
 
-def load_saved_funnel(page, saved_funnel, game_name):
+def load_saved_funnel(page, saved_funnel, game_name, is_all_geo=False):
     """
     Load a saved ByteBrew filter for either Funnel Explorer or Mechanics.
     Includes QQ2 and QQ4 State Verification with API wipe self-healing.
     """
     if not saved_funnel:
-        raise RuntimeError("Saved Filter is blank in games.xlsx.")
+        raise RuntimeError("Saved Filter is blank in configuration.")
 
     for load_attempt in range(1, 5):
-        log(f"[Checker] Verifying if preset '{saved_funnel}' AND 'Countries' pill are active (Attempt {load_attempt})...")
+        log(f"`Checker` Checking active filters & preset status (Attempt {load_attempt})...")
         
         preset_ok = False
         pill_ok = False
@@ -513,25 +523,27 @@ def load_saved_funnel(page, saved_funnel, game_name):
             current_preset = page.locator("#loaded-filter-name").inner_text(timeout=3000).strip()
             if current_preset == saved_funnel:
                 preset_ok = True
-                # Wait up to 4 seconds for the API payload to physically render the 'Countries' tag
-                page.locator("#filter-result-area-1 span.tag:has-text('Countries')").wait_for(state="visible", timeout=4000)
-                pill_ok = True
+                if is_all_geo:
+                    pill_ok = True
+                else:
+                    page.locator("#filter-result-area-1 span.tag:has-text('Countries')").wait_for(state="visible", timeout=4000)
+                    pill_ok = True
         except Exception:
             pass
             
         if preset_ok and pill_ok:
-            log(f"[Checker] Success: '{saved_funnel}' and 'Countries' pill are securely locked in the DOM.")
+            log("`Checker` Preset & Filter tags confirmed.")
             return
 
         # If we reach here, either the preset text mismatched or the Geo pill vanished
         if load_attempt > 1:
             if preset_ok and not pill_ok:
-                log(f"[Clicker] ByteBrew API glitch detected (Missing Geo). Force-reloading '{saved_funnel}'...")
+                log(f"`Clicker` ByteBrew API glitch detected (Missing Geo). Force-reloading '{saved_funnel}'...")
             else:
-                log(f"[Clicker] Preset mismatch. Force-reloading '{saved_funnel}'...")
+                log(f"`Clicker` Preset mismatch. Force-reloading '{saved_funnel}'...")
             page.wait_for_timeout(1000)
         else:
-            log(f"[Clicker] Loading saved filter: '{saved_funnel}'")
+            log(f"`Clicker` Opening saved preset: '{saved_funnel}'...")
 
         click_text(page, "Load Filter")
         page.wait_for_timeout(1000)  # Wait for popup animation
@@ -549,7 +561,7 @@ def load_saved_funnel(page, saved_funnel, game_name):
                 'Could not find "Load Funnel Filter" or "Load Mechanic Filter" popup.'
             )
 
-        log(f'Opened popup: "{modal_title.inner_text().strip() if modal_title else "Load Filter"}"')
+        log("Filter selection popup opened.")
 
         selected = False
         last_scroll_signature = None
@@ -692,20 +704,20 @@ def load_saved_funnel(page, saved_funnel, game_name):
                 f'Saved filter "{saved_funnel}" was not found after scrolling.'
             )
 
-        log(f"[Clicker] Clicked '{saved_funnel}'. Waiting for popup to auto-close...")
+        log(f"`Clicker` Selecting '{saved_funnel}'...")
         
         try:
             modal_title.wait_for(state="hidden", timeout=6000)
-            log("[Checker] Load Filter popup auto-closed.")
+            log("`Checker` Preset selected successfully.")
         except Exception:
-            log("[Clicker] Popup did not auto-close. Forcing Escape...")
+            log("`Clicker` Popup did not auto-close. Forcing Escape...")
             page.keyboard.press("Escape")
             
         # Give DOM a moment to fetch the corrupted/clean payload before next loop iteration verifies it
         page.wait_for_timeout(2000)
 
     screenshot(page, game_name, "preset_api_wipe_failed")
-    raise RuntimeError(f"[Checker] FATAL: ByteBrew API repeatedly wiped the '{saved_funnel}' payload after 4 attempts.")
+    raise RuntimeError(f"`Checker` FATAL: ByteBrew API repeatedly wiped the '{saved_funnel}' payload after 4 attempts.")
 
 
 def select_filter_value(page, category, value, game_name):
@@ -918,35 +930,91 @@ def save_filter(page, saved_funnel, game_name):
 
 
 
-def verify_filter_pills(page, game_name):
-    """Checker function to explicitly look for 'Countries' in the #filter-result-area-1 box. (QQ4)"""
-    log("[Checker] Verifying active filter pills (QQ4) against API wipe...")
+def get_country_name_from_code(code):
+    """Converts ISO country codes (e.g. IN, PK) to Full Names with fallback."""
+    code_str = str(code or "").strip().upper()
+    country_code_exceptions = {
+        'XK': 'Kosovo', 'IN': 'India', 'PK': 'Pakistan', 'BD': 'Bangladesh', 
+        'ID': 'Indonesia', 'US': 'United States', 'GB': 'United Kingdom', 
+        'DE': 'Germany', 'FR': 'France', 'AZ': 'Azerbaijan', 'TR': 'Turkey', 
+        'BR': 'Brazil', 'PT': 'Portugal', 'AR': 'Argentina', 'CO': 'Colombia', 
+        'MX': 'Mexico', 'ES': 'Spain', 'EG': 'Egypt', 'SA': 'Saudi Arabia', 
+        'AE': 'United Arab Emirates'
+    }
     try:
-        pill = page.locator("#filter-result-area-1 span.tag:has-text('Countries')")
-        pill.wait_for(state="visible", timeout=4000)
-        log("[Checker] Success: 'Countries' filter pill is securely locked in the DOM.")
-    except PlaywrightTimeoutError:
-        screenshot(page, game_name, "filter_pill_wiped")
-        raise RuntimeError("[Checker] FATAL: ByteBrew background API refresh wiped the 'Countries' filter! Aborting to prevent dirty data.")
+        import pycountry
+        c = pycountry.countries.get(alpha_2=code_str)
+        if c:
+            return c.name
+    except Exception:
+        pass
+    return country_code_exceptions.get(code_str, code_str)
+
+
+def ensure_breakdown_geo(page, game_name):
+    """Checker function to explicitly ensure the 'Breakdown' dropdown contains 'GEO'."""
+    log("`Checker` Verifying Breakdown is set to GEO...")
+    try:
+        geo_pill = page.locator('.breakdown-group .select2-selection__choice[title="GEO"]')
+        if geo_pill.count() > 0 and geo_pill.first.is_visible():
+            log("`Checker` Breakdown GEO is active.")
+            return
+
+        log("`Clicker` GEO breakdown missing. Applying GEO breakdown...")
+        search_input = page.locator('.breakdown-group .select2-search__field')
+        search_input.click(force=True)
+        page.wait_for_timeout(300)
+        
+        search_input.fill("GEO")
+        page.wait_for_timeout(300)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(300)
+
+        log("`Checker` GEO breakdown successfully applied.")
+    except Exception as e:
+        log(f"`Checker` Notice during Breakdown GEO check: {e}")
+
+
+def verify_filter_pills(page, game_name, is_all_geo=False):
+    """Checker function to verify filter tags in #filter-result-area-1 box."""
+    if is_all_geo:
+        log("`Checker` Verifying All Geo filter state (no Country restriction)...")
+        try:
+            pill = page.locator("#filter-result-area-1 span.tag:has-text('Countries')")
+            if pill.count() > 0 and pill.first.is_visible():
+                screenshot(page, game_name, "stray_country_filter_found")
+                raise RuntimeError("`Checker` FATAL: Stray 'Countries' filter detected in All Geo preset!")
+            log("`Checker` All Geo filter state confirmed.")
+        except PlaywrightTimeoutError:
+            pass
+    else:
+        log("`Checker` Verifying filters remained active...")
+        try:
+            pill = page.locator("#filter-result-area-1 span.tag:has-text('Countries')")
+            pill.wait_for(state="visible", timeout=4000)
+            log("`Checker` Country filter confirmed active.")
+        except PlaywrightTimeoutError:
+            screenshot(page, game_name, "filter_pill_wiped")
+            raise RuntimeError("`Checker` FATAL: ByteBrew background API refresh wiped the 'Countries' filter! Aborting to prevent dirty data.")
 
 
 def ensure_graph_type_bar(page):
     """Silently forces Graph Type = Bar using raw DOM strikes to avoid multi-row exports."""
-    log("[Clicker] Checking Graph Type...")
+    log("`Clicker` Checking chart format...")
     try:
         bar_radio = page.locator("#dash-graph-bar")
         if bar_radio.count() > 0:
             # Check the true HTML state of the hidden radio button
             if not bar_radio.first.is_checked():
-                log("[Clicker] Bar chart not active. Clicking Bar toggle...")
+                log("`Clicker` Switching chart format to Bar...")
                 page.locator("label#barToggle").first.click(force=True)
                 page.wait_for_timeout(400)
             
-            log("[Checker] Verifying Graph Type is securely set to 'Bar'...")
+            log("`Checker` Verifying Bar chart mode...")
             if bar_radio.first.is_checked():
-                log("[Checker] Success: Graph Type is Bar.")
+                log("`Checker` Bar chart mode active.")
     except Exception as e:
-        log(f"[Checker] Notice during Graph Type check: {e}")
+        log(f"`Checker` Notice during Graph Type check: {e}")
 
 
 def configure_install_date_filter(page, preset, game_name):
@@ -961,7 +1029,7 @@ def configure_install_date_filter(page, preset, game_name):
       -> Save
     """
     target_date = output_date_for_preset(preset).isoformat()
-    log(f"Setting User Install Date = {target_date}")
+    log(f"Setting Install Date cohort to {target_date}...")
 
     # ------------------------------------------------------------
     # 1. Click Filters -> Segment -> Settings
@@ -1020,7 +1088,7 @@ def configure_install_date_filter(page, preset, game_name):
     nearby_settings.sort(key=lambda x: x[0])
     segment_settings = nearby_settings[0][1]
 
-    log("Clicking Filters → Segment → Settings...")
+    log("`Clicker` Opening Segment Settings...")
     segment_settings.click()
 
     # ------------------------------------------------------------
@@ -1041,7 +1109,7 @@ def configure_install_date_filter(page, preset, game_name):
     # ------------------------------------------------------------
     # 3. Select USER INSTALL DATE
     # ------------------------------------------------------------
-    log('Selecting "USER INSTALL DATE"...')
+    log("`Clicker` Selecting 'User Install Date'...")
 
     # Added 'r' prefix to fix Python \s SyntaxWarning
     clicked = page.evaluate(
@@ -1099,7 +1167,7 @@ def configure_install_date_filter(page, preset, game_name):
             'Could not click "USER INSTALL DATE" in Segment Settings.'
         )
 
-    log('"USER INSTALL DATE" selected.')
+    log("Install date option selected.")
 
     # ------------------------------------------------------------
     # 4. Wait for existing Start / End date fields
@@ -1112,48 +1180,22 @@ def configure_install_date_filter(page, preset, game_name):
         re.compile(r"Install Date Range Picker", re.I)
     ).first.wait_for(state="visible", timeout=10000)
 
-    log("Looking for Start and End date fields...")
+    log("Locating calendar inputs...")
 
-    date_inputs = []
-
-    for _ in range(30):
-        date_inputs = []
-
-        inputs = page.locator("input")
-
-        for i in range(inputs.count()):
-            try:
-                inp = inputs.nth(i)
-
-                if not inp.is_visible():
-                    continue
-
-                input_type = (inp.get_attribute("type") or "").lower()
-                value = (inp.input_value() or "").strip()
-                placeholder = (inp.get_attribute("placeholder") or "").strip()
-
-                looks_like_date = (
-                    input_type == "date"
-                    or re.fullmatch(r"\d{4}-\d{2}-\d{2}", value or "")
-                    or re.search(r"date", placeholder, re.I)
-                )
-
-                if looks_like_date:
-                    date_inputs.append(inp)
-
-            except Exception:
-                pass
-
-        if len(date_inputs) >= 2:
-            break
-
-        page.wait_for_timeout(250)
-
-    if len(date_inputs) < 2:
+    try:
+        # SNIPER LOCATORS: Instantly bypass the 35-second interrogation loop using native CSS targeting
+        start_input = page.locator('input[id^="startinstall-input"]').first
+        end_input = page.locator('input[id^="endinstall-input"]').first
+        
+        start_input.wait_for(state="visible", timeout=5000)
+        end_input.wait_for(state="visible", timeout=5000)
+        
+        date_inputs = [start_input, end_input]
+    except PlaywrightTimeoutError:
         screenshot(page, game_name, "install_date_inputs_not_found")
         raise RuntimeError(
             "Install Date Range Picker is enabled, but Start/End date inputs "
-            "could not be found."
+            "could not be found via strict CSS IDs."
         )
 
     # ------------------------------------------------------------
@@ -1170,7 +1212,7 @@ def configure_install_date_filter(page, preset, game_name):
     target_day = target_dt.day
 
     def choose_date_from_picker(input_locator, label):
-        log(f"[Clicker] Selecting {label} date = {target_date}")
+        log(f"`Clicker` Setting cohort {label} Date: {target_date}")
 
         input_locator.click()
         page.wait_for_timeout(500)
@@ -1245,9 +1287,9 @@ def configure_install_date_filter(page, preset, game_name):
 
         if not selected:
             screenshot(page, game_name, f"install_date_{label.lower()}_calendar_failed")
-            raise RuntimeError(f"[Clicker] Could not select {target_date} from the {label} calendar.")
+            raise RuntimeError(f"`Clicker` Could not select {target_date} from the {label} calendar.")
 
-        log(f"[Checker] Verifying {label} date input value matches '{target_date}'...")
+        log(f"`Checker` {label} Date verified.")
         # Wait for ByteBrew to update the readonly input.
         for _ in range(20):
             try:
@@ -1282,13 +1324,13 @@ def configure_install_date_filter(page, preset, game_name):
             f"Start={start_value}, End={end_value}, expected={target_date}"
         )
 
-    log(f"User Install Date set: {target_date} → {target_date}")
+    log("Install Date range locked.")
 
     # ------------------------------------------------------------
     # 6. Click green Save in Segment Settings
     # ------------------------------------------------------------
-    log("[Checker] Verifying exact start/end input matches before saving...")
-    log("[Clicker] Saving Segment Settings...")
+    log("`Checker` Checking date inputs before saving...")
+    log("`Clicker` Saving cohort settings...")
 
     save_candidates = page.get_by_text("Save", exact=True)
     visible_saves = []
@@ -1325,7 +1367,7 @@ def configure_install_date_filter(page, preset, game_name):
 
     # Strict wait to allow the invisible .modal-backdrop CSS animation to fully clear the screen
     page.wait_for_timeout(1500)
-    log("Segment Settings saved.")
+    log("Cohort settings saved.")
 
 
 def apply_funnel(page, game_name):
@@ -1342,7 +1384,7 @@ def apply_funnel(page, game_name):
     # Activate dormant function: Force the UI to Bar Chart so empty datasets render a 0-value table instead of timing out
     ensure_graph_type_bar(page)
 
-    log("[Clicker] Clicking Apply...")
+    log("`Clicker` Applying filters and querying data...")
 
     apply_button = page.get_by_role("button", name="Apply", exact=True)
     if apply_button.count() == 0:
@@ -1355,7 +1397,7 @@ def apply_funnel(page, game_name):
     data_table_heading.wait_for(state="visible", timeout=30000)
     data_table_heading.scroll_into_view_if_needed()
 
-    log("[Checker] Waiting for result table rows to populate...")
+    log("`Checker` Waiting for table to load...")
 
     try:
         page.wait_for_function(
@@ -1420,7 +1462,7 @@ def apply_funnel(page, game_name):
 
     # Wait for the rendered table to settle.
     # We require the visible row count to remain unchanged across checks.
-    log("Data found. Waiting for table to finish rendering...")
+    log("Data loaded. Preparing export menu...")
 
     previous_count = None
     stable_checks = 0
@@ -1445,7 +1487,7 @@ def apply_funnel(page, game_name):
     # Extra small settle period for ByteBrew's menu/controls after table render.
     page.wait_for_timeout(1500)
 
-    log("Funnel data fully loaded.")
+    log("Table ready.")
 
 
 def download_csv(page, output_path, game_name):
@@ -1537,7 +1579,7 @@ def download_csv(page, output_path, game_name):
         screenshot(page, game_name, "datatable_header_controls_not_found")
         raise RuntimeError("Could not find controls on the Data Table header row.")
 
-    log("Clicking Data Table rightmost header control...")
+    log("`Clicker` Accessing download menu...")
     menu_button.click()
     page.wait_for_timeout(400)
 
@@ -1562,8 +1604,8 @@ def download_csv(page, output_path, game_name):
             pass
 
     if download_item is not None:
-        log('Visible "Download CSV" menu item found.')
-        log("Downloading CSV...")
+        log("Export option located.")
+        log("`Clicker` Triggering CSV download...")
 
         with page.expect_download(timeout=30000) as download_info:
             download_item.click()
@@ -1599,8 +1641,8 @@ def download_csv(page, output_path, game_name):
                 "could be found."
             )
 
-        log("Using Funnel Explorer download control.")
-        log("Downloading CSV...")
+        log("Export option located.")
+        log("`Clicker` Triggering CSV download...")
 
         with page.expect_download(timeout=30000) as download_info:
             datatable_download.click()
@@ -1611,7 +1653,7 @@ def download_csv(page, output_path, game_name):
         output_path.unlink()
 
     download.save_as(str(output_path))
-    log(f"CSV saved: {output_path}")
+    log(f"Raw data saved: {output_path.name}")
 
 
 def get_game_users_flexible(df, candidates):
@@ -1698,7 +1740,7 @@ def process_dp1_merge(output_dir, game):
         log(f"[{game_name}] PartA or PartB CSV missing; skipping DP1 Excel report.")
         return None
 
-    log(f'[{game_name}] Generating final DP1 report: "{output_name}.xlsx"...')
+    log(f"Processing final Excel report: '{output_name}.xlsx'...")
     
     # Load raw CSVs
     df_ret = pd.read_csv(part_a_files[0])
@@ -1771,33 +1813,233 @@ def process_dp1_merge(output_dir, game):
                 elif kpi_name == 'Avg Ad per user':
                     cell.number_format = float_format
 
-    log(f"[{game_name}] Final report created: {excel_path.name}")
+    log(f"Final report created: {excel_path.name}")
 
     # Requirement 1: Instantly delete the raw PartA and PartB CSVs once the Excel report completes successfully
     for csv_file in set(part_a_files + part_b_files):
         try:
             if csv_file.exists():
                 csv_file.unlink()
-                log(f"[{game_name}] Cleaned up raw CSV: {csv_file.name}")
-        except Exception as err:
-            log(f"[{game_name}] Failed to delete {csv_file.name}: {err}")
+        except Exception:
+            pass
+            
+    log("Cleaned temporary raw files.")
 
     return excel_path
+
+
+def process_all_geo_merge(output_dir, game, cohort_date):
+    """Merges downloaded PartA and PartB CSVs into <Output Name>.xlsx for All Geo."""
+    game_name = game["game_name"]
+    output_name = game.get("output_name") or game_name
+
+    part_a_files = list(output_dir.glob(f"{safe_name(game_name)}_*PartA*.csv")) + list(output_dir.glob(f"{safe_name(game_name)}_*PART A*.csv")) + list(output_dir.glob(f"{safe_name(game_name)}_*PART_A*.csv"))
+    part_b_files = list(output_dir.glob(f"{safe_name(game_name)}_*PartB*.csv")) + list(output_dir.glob(f"{safe_name(game_name)}_*PART B*.csv")) + list(output_dir.glob(f"{safe_name(game_name)}_*PART_B*.csv"))
+
+    if not part_a_files or not part_b_files:
+        all_csvs = list(output_dir.glob(f"{safe_name(game_name)}_*.csv"))
+        for f in all_csvs:
+            try:
+                df = pd.read_csv(f)
+                if 'EVENT' in df.columns:
+                    if df['EVENT'].astype(str).str.contains('A - new_user', na=False).any():
+                        part_a_files = [f]
+                    elif df['EVENT'].astype(str).str.contains('A - adShown_10', na=False).any() or df['EVENT'].astype(str).str.contains('ad', case=False, na=False).any():
+                        part_b_files = [f]
+            except Exception:
+                pass
+
+    if not part_a_files or not part_b_files:
+        log(f"[{game_name}] PartA or PartB CSV missing; skipping All Geo Excel report.")
+        return None
+
+    log(f"Processing final Excel report: '{output_name}.xlsx'...")
+    
+    ret_df = pd.read_csv(part_a_files[0])
+    ad_df = pd.read_csv(part_b_files[0])
+
+    for df in [ret_df, ad_df]:
+        if 'GEO' in df.columns:
+            df['GEO'] = df['GEO'].astype(str).str.strip()
+        if 'EVENT' in df.columns:
+            df['EVENT'] = df['EVENT'].astype(str).str.strip()
+
+    if 'GEO' in ret_df.columns:
+        ret_df = ret_df[ret_df['GEO'].str.match(r'^[A-Za-z]{2}$', na=False)].copy()
+
+    ret_events_str = " ".join(ret_df['EVENT'].dropna().unique()) if 'EVENT' in ret_df.columns else ""
+    ad_events_str = " ".join(ad_df['EVENT'].dropna().unique()) if 'EVENT' in ad_df.columns else ""
+
+    ret_base = "levelStarted"
+    onboard_evt = "H - levelStarted"
+    if "level_start" in ret_events_str and "level_started" not in ret_events_str:
+        ret_base = "level_start"
+        onboard_evt = "H - level_start"
+    elif "level_started" in ret_events_str:
+        ret_base = "level_started"
+        if "level_completed" in ret_events_str:
+            onboard_evt = "H - level_completed"
+        else:
+            onboard_evt = "H - level_started"
+    elif "levelStarted" in ret_events_str:
+        ret_base = "levelStarted"
+        onboard_evt = "H - levelStarted"
+
+    ad_base = "adShown_" if "adShown_" in ad_events_str else "ads_"
+    new_user_evt = "A - new_user"
+
+    geos_to_process = sorted(ret_df['GEO'].unique()) if 'GEO' in ret_df.columns else []
+    
+    ret_lookup = ret_df.set_index(['GEO', 'EVENT'])['USERS'].to_dict() if {'GEO', 'EVENT', 'USERS'}.issubset(ret_df.columns) else {}
+    ad_lookup = ad_df.set_index(['GEO', 'EVENT'])['USERS'].to_dict() if {'GEO', 'EVENT', 'USERS'}.issubset(ad_df.columns) else {}
+
+    inter_mask = ad_df['EVENT'].astype(str).str.contains('J', na=False) & ad_df['EVENT'].astype(str).str.contains('inter', na=False) if 'EVENT' in ad_df.columns else pd.Series([False]*len(ad_df))
+    reward_mask = ad_df['EVENT'].astype(str).str.contains('undefined', na=False) & ad_df['EVENT'].astype(str).str.contains('reward', na=False) if 'EVENT' in ad_df.columns else pd.Series([False]*len(ad_df))
+    geo_ad_totals = ad_df[inter_mask | reward_mask].groupby('GEO')['EVENT AMOUNT'].sum().to_dict() if 'EVENT AMOUNT' in ad_df.columns and 'GEO' in ad_df.columns else {}
+
+    final_data = {}
+    for geo in geos_to_process:
+        total_users = ret_lookup.get((geo, new_user_evt), 0)
+        if total_users == 0:
+            total_users = ret_lookup.get((geo, 'new_user'), 0)
+        if total_users == 0:
+            continue
+
+        onboarded = ret_lookup.get((geo, onboard_evt), 0)
+        country_name = get_country_name_from_code(geo)
+
+        res = {'User Installed': int(total_users)}
+        
+        lvls = [20, 50, 70, 100, 150, 200]
+        lvl_map = {20: 'B', 50: 'C', 70: 'D', 100: 'E', 150: 'F', 200: 'G'}
+        for lvl in lvls:
+            evt = f"{lvl_map[lvl]} - {ret_base}"
+            count = ret_lookup.get((geo, evt), 0)
+            res[f'% of users at {lvl}'] = count / total_users if total_users > 0 else 0.0
+            res[f'vs Onboard - Lvl {lvl} %'] = (count / onboarded) if onboarded > 0 else 0.0
+
+        ad_lvls = {10: 'A', 20: 'B', 40: 'D', 70: 'F', 100: 'G'}
+        for lvl, char in ad_lvls.items():
+            evt = f"{char} - {ad_base}{lvl}"
+            res[f'% of users at Ads {lvl}'] = ad_lookup.get((geo, evt), 0) / total_users if total_users > 0 else 0.0
+
+        res['Avg Ad per user'] = geo_ad_totals.get(geo, 0) / total_users if total_users > 0 else 0.0
+        res['Users Onboarded'] = int(onboarded)
+
+        final_data[country_name] = res
+
+    if not final_data:
+        log(f"[{game_name}] No country data processed.")
+        return None
+
+    final_report = pd.DataFrame(final_data)
+    if not final_report.empty:
+        final_report = final_report.T.sort_values(by='User Installed', ascending=False).T
+
+    kpi_order = [
+        'User Installed', 
+        '% of users at 20', '% of users at 50', '% of users at 70', 
+        '% of users at 100', '% of users at 150', '% of users at 200', 
+        '% of users at Ads 10', '% of users at Ads 20', '% of users at Ads 40', 
+        '% of users at Ads 70', '% of users at Ads 100', 
+        'Avg Ad per user',
+        'Users Onboarded', 
+        'vs Onboard - Lvl 20 %', 'vs Onboard - Lvl 50 %', 'vs Onboard - Lvl 70 %', 
+        'vs Onboard - Lvl 100 %', 'vs Onboard - Lvl 150 %', 'vs Onboard - Lvl 200 %'
+    ]
+    final_report = final_report.reindex(kpi_order)
+
+    sheet_name = f"{cohort_date.day} {cohort_date.strftime('%b %y')}"
+    excel_path = output_dir / f"{safe_name(output_name)}.xlsx"
+
+    from openpyxl.styles import PatternFill, Border
+    from openpyxl.formatting.rule import Rule
+
+    with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+        final_report.to_excel(writer, sheet_name=sheet_name, header=False, index=False, startrow=1, startcol=1)
+        ws = writer.sheets[sheet_name]
+        ws.freeze_panes = 'B2'
+
+        bold_font = Font(bold=True, name='Calibri')
+        normal_font = Font(bold=False, name='Calibri')
+        center_align = Alignment(horizontal='center', vertical='center')
+        no_border = Border(left=None, right=None, top=None, bottom=None)
+
+        ws.cell(row=1, column=1, value='KPI').font = bold_font
+        for col_num, col_name in enumerate(final_report.columns, 2):
+            ws.cell(row=1, column=col_num, value=col_name).font = bold_font
+        for row_num, index_name in enumerate(final_report.index, 2):
+            ws.cell(row=row_num, column=1, value=index_name).font = normal_font
+
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.alignment = center_align
+                cell.border = no_border
+
+        for i in range(1, ws.max_column + 1):
+            ws.column_dimensions[get_column_letter(i)].width = 20.73
+
+        for row_num in [2, 15]:
+            for cell in ws[row_num]:
+                if cell.column > 1 and isinstance(cell.value, (int, float)):
+                    cell.number_format = '#,##0'
+
+        for row_num in list(range(3, 14)) + list(range(16, 22)):
+            if row_num == 14:
+                continue
+            for cell in ws[row_num]:
+                if cell.column > 1 and cell.value is not None:
+                    cell.number_format = '0.00%'
+
+        for cell in ws[14]:
+            if cell.column > 1 and isinstance(cell.value, (int, float)):
+                cell.number_format = '0.00'
+                cell.font = bold_font
+
+        green_fill = PatternFill(start_color='C6EFCE', end_color='C6EFCE', fill_type='solid')
+        green_font_fill = Font(color='006100', name='Calibri')
+        red_fill = PatternFill(start_color='FFC7CE', end_color='FFC7CE', fill_type='solid')
+        red_font_fill = Font(color='9C0006', bold=True, name='Calibri')
+
+        rule1 = Rule(type="cellIs", operator="greaterThan", formula=[500])
+        rule1.fill = green_fill
+        rule1.font = green_font_fill
+        ws.conditional_formatting.add('B2:XFD2', rule1)
+
+        rule2 = Rule(type="cellIs", operator="greaterThan", formula=[8])
+        rule2.fill = red_fill
+        rule2.font = red_font_fill
+        ws.conditional_formatting.add('B14:XFD14', rule2)
+
+    log(f"Final report created: {excel_path.name}")
+
+    for csv_file in set(part_a_files + part_b_files):
+        try:
+            if csv_file.exists():
+                csv_file.unlink()
+        except Exception:
+            pass
+            
+    log("Cleaned temporary raw files.")
+    return excel_path
+
+
 def process_game(base_page, game, email=None, password=None):
     """
     Process every configured saved funnel sequentially.
     Tabs are nuked and recreated for each funnel to guarantee zero state bleeding.
     """
-    global CURRENT_DATE_DIR
+    global CURRENT_DATE_DIR, CURRENT_QUEUE_TYPE
     game_name = game["game_name"]
     saved_funnels = game.get("saved_funnels", [])
+    is_all_geo = bool(game.get("is_all_geo", False))
+    CURRENT_QUEUE_TYPE = "all_geo" if is_all_geo else "dp1"
 
     if not saved_funnels:
         raise RuntimeError(
             f'No Saved Funnel 1 / Saved Funnel 2 configured for "{game_name}".'
         )
 
-    # Establish the daily target directory immediately so logs and screenshots route correctly from step 1
     folder_date = output_date_for_preset(game["date_range"])
     output_dir = UPLOAD_DIR / folder_date.isoformat()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1806,7 +2048,6 @@ def process_game(base_page, game, email=None, password=None):
     outputs = []
     browser_context = base_page.context
 
-    # Close the initial blank page passed from app.py to keep things completely isolated
     try:
         base_page.close()
     except Exception:
@@ -1815,20 +2056,18 @@ def process_game(base_page, game, email=None, password=None):
     for funnel_index, saved_funnel in enumerate(saved_funnels, start=1):
         print()
         log(
-            f'[{game_name}] Funnel {funnel_index}/{len(saved_funnels)}: '
+            f'[{game_name}] Starting Funnel {funnel_index}/{len(saved_funnels)}: '
             f'"{saved_funnel}"'
         )
 
-        # Nuke previous state: open a completely fresh tab for this funnel
         page = browser_context.new_page()
         page.set_default_timeout(15000)
 
         try:
-            # Fresh tab login and navigation
             open_game(page, game, email=email, password=password)
 
-            # 1. Load saved preset first
-            load_saved_funnel(page, saved_funnel, game_name)
+            # 1. Load saved preset
+            load_saved_funnel(page, saved_funnel, game_name, is_all_geo=is_all_geo)
 
             # 2. Force Top Main Date Range AFTER loading preset
             set_date_range(page, game["date_range"], game_name)
@@ -1841,17 +2080,19 @@ def process_game(base_page, game, email=None, password=None):
                     game_name
                 )
                 
-                # QQ4 Killshot Check
-                verify_filter_pills(page, game_name)
+                verify_filter_pills(page, game_name, is_all_geo=is_all_geo)
 
             # 4. If Build Version or Country is configured in Sheet, ensure selection without unchecking
             if game.get("build_version") or game.get("country"):
                 configure_build_and_geo(page, game.get("build_version"), game.get("country"), game_name)
 
-            # 5. Apply funnel (Ignore UI Graph mode; raw data formatting handled in Python)
+            # 5. For All Geo, strictly ensure the 'Breakdown' dropdown has GEO active
+            if is_all_geo:
+                ensure_breakdown_geo(page, game_name)
+
+            # 6. Apply funnel
             apply_funnel(page, game_name)
 
-            # Save individual CSVs with Game Name + Saved Funnel
             output_file = output_dir / (
                 f'{safe_name(game["game_name"])}_'
                 f'{safe_name(saved_funnel)}.csv'
@@ -1860,16 +2101,18 @@ def process_game(base_page, game, email=None, password=None):
             download_csv(page, output_file, game_name)
             outputs.append(output_file)
 
-            log(f'Completed "{saved_funnel}".')
+            log(f"Finished '{saved_funnel}' successfully.")
         finally:
-            # Tab Nuke: Close the tab so the next Part/Funnel starts 100% fresh
             try:
                 page.close()
             except Exception:
                 pass
 
-    # Automatically generate merged DP1 Excel report (<Output Name>.xlsx)
-    merged_report = process_dp1_merge(output_dir, game)
+    if is_all_geo:
+        merged_report = process_all_geo_merge(output_dir, game, folder_date)
+    else:
+        merged_report = process_dp1_merge(output_dir, game)
+
     if merged_report:
         outputs.append(merged_report)
 
