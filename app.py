@@ -25,7 +25,9 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 SHEET_ID = "1GVaA0ajVKbrPbqdlY5vbXa6ONlXEjGnotS3-3pYI5Ww"
 SHEET_NAME_DP1 = "Dp1"
 SHEET_NAME_ALL_GEO = "allGeo"
+SHEET_NAME_DROP_SHEET = "DropSheet"
 CREDENTIALS_FILE = SYSTEM_DIR / "credentials.json"
+SETTINGS_FILE = SYSTEM_DIR / "settings.json"
 
 class DesktopAPI:
     """JS Bridge: Connects Tailwind frontend directly to Playwright scraper engine."""
@@ -35,6 +37,16 @@ class DesktopAPI:
         self.tasks_all_geo = []
         self.is_running_all_dp1 = False
         self.is_running_all_all_geo = False
+        self.tasks_dropsheet = []
+        self.is_running_all_dropsheet = False
+        saved_folder = str(Path.home() / "Downloads")
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r") as f:
+                    saved_folder = json.load(f).get("dropsheet_folder", saved_folder)
+            except Exception:
+                pass
+        self.dropsheet_folder = saved_folder
         self.abort_signal = False
 
     def emit_log(self, msg, queue_type=None, idx=None):
@@ -73,11 +85,57 @@ class DesktopAPI:
             except Exception:
                 pass
 
+    def select_dropsheet_folder(self):
+        if self._window:
+            try:
+                # Correct newer pywebview syntax
+                dialog_type = webview.FileDialog.FOLDER
+            except AttributeError:
+                # Fallback for older versions
+                dialog_type = webview.FOLDER_DIALOG
+            
+            result = self._window.create_file_dialog(dialog_type)
+            if result and len(result) > 0:
+                self.dropsheet_folder = result[0]
+                data = {}
+                if SETTINGS_FILE.exists():
+                    try:
+                        with open(SETTINGS_FILE, "r") as f:
+                            data = json.load(f)
+                    except Exception:
+                        pass
+                data["dropsheet_folder"] = self.dropsheet_folder
+                with open(SETTINGS_FILE, "w") as f:
+                    json.dump(data, f)
+                self.emit_log(f"[System] Drop Sheet folder updated to: {self.dropsheet_folder}")
+        return self.dropsheet_folder
+                
     def get_initial_state(self):
+        delete_csvs = False
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r") as f:
+                    delete_csvs = json.load(f).get("delete_csvs", False)
+            except Exception:
+                pass
         return {
             "selected_date": (date.today() - timedelta(days=1)).isoformat(),
-            "status": "MindYourLogic Studios"
+            "status": "MindYourLogic Studios",
+            "delete_csvs": delete_csvs
         }
+
+    def set_delete_csvs(self, enabled):
+        data = {}
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r") as f:
+                    data = json.load(f)
+            except Exception:
+                pass
+        data["delete_csvs"] = bool(enabled)
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(data, f)
+        return True
 
     def open_output_folder(self, target_date):
         folder_path = UPLOAD_DIR / target_date
@@ -105,6 +163,7 @@ class DesktopAPI:
         
         url_dp1 = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME_DP1}"
         url_all_geo = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME_ALL_GEO}"
+        url_dropsheet = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME_DROP_SHEET}"
         meta_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=metaData"
         try:
             icon_map = {}
@@ -137,15 +196,66 @@ class DesktopAPI:
 
             self.tasks_dp1 = parse_sheet_df(url_dp1, is_all_geo=False)
             self.tasks_all_geo = parse_sheet_df(url_all_geo, is_all_geo=True)
+            self.tasks_dropsheet = parse_sheet_df(url_dropsheet, is_all_geo=False)
 
             return {
                 "dp1": self.tasks_dp1,
-                "all_geo": self.tasks_all_geo
+                "all_geo": self.tasks_all_geo,
+                "dropsheet": self.tasks_dropsheet
             }
         except Exception as e:
             print(f"[DesktopAPI] Error loading sheets: {e}", flush=True)
-            return {"dp1": [], "all_geo": []}
+            return {"dp1": [], "all_geo": [], "dropsheet": []}
 
+    def _execute_dropsheet_job(self, task_dict, idx, delete_csvs=False):
+        import requests
+        self.abort_signal = False
+        script_url = str(task_dict.get("Script URL", "")).strip()
+        prefix = str(task_dict.get("Output Prefix", "")).strip()
+        g_name = str(task_dict.get("Game Name", "Unnamed")).strip()
+        
+        if not script_url:
+            self.emit_log(f"[Error] No script URL found for {g_name}", "dropsheet", idx)
+            return False
+
+        cache_dir = SYSTEM_DIR / "cached_modules"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        local_cache = cache_dir / f"drop_{idx}.py"
+        code_text = None
+
+        try:
+            res = requests.get(script_url, headers={"Cache-Control": "no-cache"}, timeout=5)
+            if res.status_code == 200:
+                code_text = res.text
+                with open(local_cache, "w", encoding="utf-8") as f:
+                    f.write(code_text)
+        except Exception as e:
+            self.emit_log(f"[System] Network fetch failed: {e}. Checking cache...", "dropsheet", idx)
+
+        if not code_text and local_cache.exists():
+            with open(local_cache, "r", encoding="utf-8") as f:
+                code_text = f.read()
+
+        if not code_text:
+            self.emit_log(f"[Error] Fatal: Cannot load script for {g_name} offline.", "dropsheet", idx)
+            return False
+
+        try:
+            self.emit_log(f"[{g_name}] Processing in: {self.dropsheet_folder}", "dropsheet", idx)
+            module_scope = {}
+            exec(code_text, module_scope)
+            res = module_scope['run'](
+                folder_path=self.dropsheet_folder,
+                custom_filename=prefix,
+                delete_csvs=delete_csvs,
+                auto_open=True
+            )
+            self.emit_log(f"[{g_name}] Completed successfully.", "dropsheet", idx)
+            return True
+        except Exception as e:
+            self.emit_log(f"[Error executing {g_name}]: {e}", "dropsheet", idx)
+            return False
+        
     def _execute_job(self, task_dict, queue_type, idx, target_date):
         self.abort_signal = False
         
@@ -242,14 +352,19 @@ class DesktopAPI:
                 downloader.log(f"[Error executing {game_config['game_name']}]: {e}")
             return False
 
-    def run_single_task(self, queue_type, idx, target_date):
-        tasks = self.tasks_dp1 if queue_type == "dp1" else self.tasks_all_geo
-        if idx >= len(tasks):
-            return
+    def run_single_task(self, queue_type, idx, target_date, delete_csvs=False):
+        if queue_type == "dp1": tasks = self.tasks_dp1
+        elif queue_type == "all_geo": tasks = self.tasks_all_geo
+        else: tasks = self.tasks_dropsheet
+        
+        if idx >= len(tasks): return
 
         def _worker():
             self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Running')")
-            res = self._execute_job(tasks[idx], queue_type, idx, target_date)
+            if queue_type == "dropsheet":
+                res = self._execute_dropsheet_job(tasks[idx], idx, delete_csvs)
+            else:
+                res = self._execute_job(tasks[idx], queue_type, idx, target_date)
             
             if res == "login_error":
                 self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Failed')")
@@ -262,15 +377,15 @@ class DesktopAPI:
         threading.Thread(target=_worker, daemon=True).start()
 
     def run_all_tasks(self, queue_type, target_date, start_idx=0):
-        tasks = self.tasks_dp1 if queue_type == "dp1" else self.tasks_all_geo
-        if not tasks:
-            return
+        if queue_type == "dp1": tasks = self.tasks_dp1
+        elif queue_type == "all_geo": tasks = self.tasks_all_geo
+        else: tasks = self.tasks_dropsheet
+        if not tasks: return
 
         def _worker_all():
-            if queue_type == "dp1":
-                self.is_running_all_dp1 = True
-            else:
-                self.is_running_all_all_geo = True
+            if queue_type == "dp1": self.is_running_all_dp1 = True
+            elif queue_type == "all_geo": self.is_running_all_all_geo = True
+            else: self.is_running_all_dropsheet = True
 
             total = len(tasks)
             self._window.evaluate_js(f"setRunAllState('{queue_type}', true, {start_idx}, {total})")
@@ -280,19 +395,25 @@ class DesktopAPI:
                 if idx < start_idx:
                     continue
                     
-                is_running = self.is_running_all_dp1 if queue_type == "dp1" else self.is_running_all_all_geo
-                if not is_running:
-                    break
+                if queue_type == "dp1": is_running = self.is_running_all_dp1
+                elif queue_type == "all_geo": is_running = self.is_running_all_all_geo
+                else: is_running = self.is_running_all_dropsheet
+
+                if not is_running: break
+                
                 self._window.evaluate_js(f"setRunAllState('{queue_type}', true, {idx+1}, {total})")
                 self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Running')")
-                res = self._execute_job(task, queue_type, idx, target_date)
+                
+                if queue_type == "dropsheet":
+                    res = self._execute_dropsheet_job(task, idx)
+                else:
+                    res = self._execute_job(task, queue_type, idx, target_date)
                 
                 if res == "login_error":
                     self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Failed')")
-                    if queue_type == "dp1":
-                        self.is_running_all_dp1 = False
-                    else:
-                        self.is_running_all_all_geo = False
+                    if queue_type == "dp1": self.is_running_all_dp1 = False
+                    elif queue_type == "all_geo": self.is_running_all_all_geo = False
+                    else: self.is_running_all_dropsheet = False
                     self._window.evaluate_js(f"setRunAllCompleted('{queue_type}', {success_count}, {total})")
                     self._window.evaluate_js(f"triggerLoginRecovery('{queue_type}', {idx}, true)")
                     return
