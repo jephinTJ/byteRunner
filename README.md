@@ -1,6 +1,6 @@
-# ByteRunner: ByteBrew DP1 Automation Engine V2.0
+# ByteRunner: ByteBrew Automation & Progression Engine V3.0
 
-ByteRunner is a desktop automation and analytics tool built with Python, PyWebView (Tailwind CSS frontend), and Playwright. It automates cohort configuration, multi-part funnel extraction, and DP1 KPI aggregation for mobile games on the ByteBrew dashboard.
+ByteRunner is a desktop automation and analytics tool built with Python, PyWebView (Tailwind CSS frontend), and Playwright. It automates cohort configuration, multi-part funnel extraction, DP1 KPI aggregation, and custom drop sheet progression generation via remote script execution.
 
 ---
 
