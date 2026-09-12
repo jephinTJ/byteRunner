@@ -181,7 +181,7 @@
               >
               <span
                 class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/50"
-                >v3.0</span
+                >v4.0</span
               >
             </div>
             <div class="flex items-center gap-1.5 mt-0.5">
@@ -487,41 +487,21 @@
               />
             </div>
 
-            <!-- Larger Folder Picker Button -->
+            <!-- Settings Modal Button -->
             <button
-              onclick="changeDropFolder()"
-              class="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-base border border-surface-border hover:border-brand-500 hover:bg-brand-500/10 transition-all cursor-pointer shadow-sm"
-              title="Change Source Folder"
+              onclick="openDropSettings()"
+              class="group flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-surface-base border border-surface-border hover:border-brand-500 hover:bg-brand-500/10 transition-all cursor-pointer shadow-sm"
+              title="Drop Sheet Settings"
             >
               <i
-                data-lucide="folder-search"
+                data-lucide="settings"
                 class="w-4 h-4 text-zinc-400 group-hover:text-brand-500 transition-colors"
               ></i>
               <span
                 class="text-xs font-semibold text-zinc-300 group-hover:text-brand-500 transition-colors select-none"
-                >Source Folder</span
+                >Settings</span
               >
             </button>
-
-            <!-- Reverted Delete CSVs Pill Toggle -->
-            <div
-              class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-base border border-surface-border"
-            >
-              <span
-                class="text-[10px] font-bold text-zinc-400 uppercase tracking-wider select-none"
-                >Delete CSVs</span
-              >
-              <button
-                id="toggle-delete-csv"
-                onclick="toggleDeleteCsv()"
-                class="relative inline-flex h-4 w-8 items-center rounded-full bg-zinc-600 transition-colors duration-200 focus:outline-none"
-              >
-                <span
-                  id="toggle-delete-csv-knob"
-                  class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 translate-x-1 pointer-events-none"
-                ></span>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -621,6 +601,7 @@
           closeModal('modal-info');
           closeModal('modal-date');
           closeModal('modal-creds');
+          closeModal('modal-dropsheet');
         }
       "
       class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
@@ -833,6 +814,214 @@
           </button>
         </div>
       </div>
+      <!-- DROP SHEET SETTINGS MODAL -->
+      <div
+        id="modal-dropsheet"
+        class="hidden [&:not(.hidden)]:flex flex-col transform scale-95 opacity-0 transition-all duration-300 w-full max-w-md bg-surface-card border border-surface-border rounded-2xl shadow-2xl overflow-hidden max-h-[80vh]"
+      >
+        <div class="p-6 pr-5 overflow-y-auto flex-1 min-h-0">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="p-2 rounded-lg bg-brand-500/10 text-brand-500">
+              <i data-lucide="settings" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-white font-bold tracking-tight">
+                Drop Sheet Settings
+              </h3>
+              <p class="text-xs text-zinc-500">
+                Configure data sources and Excel formatting.
+              </p>
+            </div>
+          </div>
+          <div class="space-y-6">
+            <!-- Storage Section -->
+            <div class="space-y-3">
+              <h4
+                class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider"
+              >
+                Storage & Cleanup
+              </h4>
+              <div
+                class="flex items-center justify-between bg-surface-base border border-surface-border p-3 rounded-xl"
+              >
+                <div class="truncate mr-3">
+                  <div class="text-[10px] text-zinc-500 font-semibold mb-0.5">
+                    Source Folder
+                  </div>
+                  <div
+                    id="lbl-drop-folder"
+                    class="text-xs text-zinc-300 truncate"
+                    title="..."
+                  >
+                    ...
+                  </div>
+                </div>
+                <button
+                  onclick="pickDropFolder()"
+                  class="shrink-0 px-3 py-1.5 rounded-lg bg-surface-card hover:bg-surface-hover text-zinc-300 font-semibold text-xs border border-surface-border transition-all"
+                >
+                  Change
+                </button>
+              </div>
+              <div
+                class="flex items-center justify-between bg-surface-base border border-surface-border p-3 rounded-xl"
+              >
+                <div>
+                  <div class="text-xs font-semibold text-zinc-300">
+                    Auto-Delete CSVs
+                  </div>
+                  <div class="text-[10px] text-zinc-500">
+                    Remove raw files after processing
+                  </div>
+                </div>
+                <button
+                  id="toggle-modal-delete"
+                  onclick="toggleModalDelete()"
+                  class="relative inline-flex h-4 w-8 items-center rounded-full bg-zinc-600 transition-colors duration-200 focus:outline-none"
+                >
+                  <span
+                    id="toggle-modal-delete-knob"
+                    class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 translate-x-1 pointer-events-none"
+                  ></span>
+                </button>
+              </div>
+            </div>
+            <!-- Formatting Section -->
+            <div class="space-y-3">
+              <h4
+                class="text-[10px] font-bold text-zinc-500 uppercase tracking-wider"
+              >
+                Highlight Thresholds (%)
+              </h4>
+
+              <!-- Level Drop% -->
+              <div
+                class="bg-surface-base border border-surface-border p-3 rounded-xl space-y-2"
+              >
+                <div class="text-xs font-semibold text-zinc-300">
+                  Level Drop%
+                </div>
+                <div class="flex gap-3">
+                  <div class="flex-1">
+                    <label
+                      class="block text-[10px] font-semibold text-red-400 mb-1"
+                      >Flagged</label
+                    >
+                    <input
+                      type="number"
+                      step="0.1"
+                      id="ld-flag"
+                      class="w-full bg-surface-card border border-surface-border rounded-lg px-2 py-1.5 text-xs text-white focus:border-brand-500 outline-none"
+                      value="3.0"
+                    />
+                  </div>
+                  <div class="flex-1">
+                    <label
+                      class="block text-[10px] font-semibold text-red-600 mb-1"
+                      >Danger</label
+                    >
+                    <input
+                      type="number"
+                      step="0.1"
+                      id="ld-danger"
+                      class="w-full bg-surface-card border border-surface-border rounded-lg px-2 py-1.5 text-xs text-white focus:border-brand-500 outline-none"
+                      value="6.0"
+                    />
+                  </div>
+                </div>
+              </div>
+              <!-- Interruption Drop% -->
+              <div
+                class="bg-surface-base border border-surface-border p-3 rounded-xl space-y-2"
+              >
+                <div class="text-xs font-semibold text-zinc-300">
+                  Interruption Drop%
+                </div>
+                <div class="flex gap-3">
+                  <div class="flex-1">
+                    <label
+                      class="block text-[10px] font-semibold text-red-400 mb-1"
+                      >Flagged</label
+                    >
+                    <input
+                      type="number"
+                      step="0.1"
+                      id="id-flag"
+                      class="w-full bg-surface-card border border-surface-border rounded-lg px-2 py-1.5 text-xs text-white focus:border-brand-500 outline-none"
+                      value="4.0"
+                    />
+                  </div>
+                  <div class="flex-1">
+                    <label
+                      class="block text-[10px] font-semibold text-red-600 mb-1"
+                      >Danger</label
+                    >
+                    <input
+                      type="number"
+                      step="0.1"
+                      id="id-danger"
+                      class="w-full bg-surface-card border border-surface-border rounded-lg px-2 py-1.5 text-xs text-white focus:border-brand-500 outline-none"
+                      value="8.0"
+                    />
+                  </div>
+                </div>
+              </div>
+              <!-- Total Drop% -->
+              <div
+                class="bg-surface-base border border-surface-border p-3 rounded-xl space-y-2"
+              >
+                <div class="text-xs font-semibold text-zinc-300">
+                  Total Drop%
+                </div>
+                <div class="flex gap-3">
+                  <div class="flex-1">
+                    <label
+                      class="block text-[10px] font-semibold text-red-400 mb-1"
+                      >Flagged</label
+                    >
+                    <input
+                      type="number"
+                      step="0.1"
+                      id="td-flag"
+                      class="w-full bg-surface-card border border-surface-border rounded-lg px-2 py-1.5 text-xs text-white focus:border-brand-500 outline-none"
+                      value="5.0"
+                    />
+                  </div>
+                  <div class="flex-1">
+                    <label
+                      class="block text-[10px] font-semibold text-red-600 mb-1"
+                      >Danger</label
+                    >
+                    <input
+                      type="number"
+                      step="0.1"
+                      id="td-danger"
+                      class="w-full bg-surface-card border border-surface-border rounded-lg px-2 py-1.5 text-xs text-white focus:border-brand-500 outline-none"
+                      value="9.9"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          class="px-6 py-4 bg-surface-base/50 border-t border-surface-border flex items-center justify-end gap-3 shrink-0"
+        >
+          <button
+            onclick="closeModal('modal-dropsheet')"
+            class="px-4 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onclick="saveDropsheetSettings()"
+            class="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-black font-bold text-xs transition-colors shadow-lg shadow-brand-500/20 active:scale-95"
+          >
+            Save Settings
+          </button>
+        </div>
+      </div>
     </div>
     <script>
       lucide.createIcons();
@@ -841,15 +1030,51 @@
       let isCollapsed = { dp1: true, all_geo: true, dropsheet: true };
       let currentIsoDate = "";
       let flatpickrInstance = null;
-      window.deleteCsvsEnabled =
-        localStorage.getItem("deleteCsvsEnabled") === "true";
+      let tempDropFolder = "";
+      let tempDeleteCsv = false;
 
-      function updateDeleteCsvUI() {
-        const knob = document.getElementById("toggle-delete-csv-knob");
-        const bg = document.getElementById("toggle-delete-csv");
-        if (!knob || !bg) return;
+      async function openDropSettings() {
+        if (window.pywebview && window.pywebview.api) {
+          const s = await window.pywebview.api.get_dropsheet_settings();
+          tempDropFolder = s.folder || "";
+          tempDeleteCsv = !!s.delete_csvs;
+          document.getElementById("lbl-drop-folder").innerText = tempDropFolder;
+          document.getElementById("lbl-drop-folder").title = tempDropFolder;
 
-        if (window.deleteCsvsEnabled) {
+          updateModalDeleteUI();
+
+          const fmt = s.formatting || {};
+          const to1Dec = (val, def) => {
+            const num = parseFloat(val);
+            return isNaN(num) ? def : num.toFixed(1);
+          };
+          document.getElementById("ld-flag").value = to1Dec(fmt.ld_flag, "3.0");
+          document.getElementById("ld-danger").value = to1Dec(
+            fmt.ld_danger,
+            "6.0",
+          );
+          document.getElementById("id-flag").value = to1Dec(fmt.id_flag, "4.0");
+          document.getElementById("id-danger").value = to1Dec(
+            fmt.id_danger,
+            "8.0",
+          );
+          document.getElementById("td-flag").value = to1Dec(fmt.td_flag, "5.0");
+          document.getElementById("td-danger").value = to1Dec(
+            fmt.td_danger,
+            "9.9",
+          );
+        }
+        openModal("modal-dropsheet");
+        const scrollContainer = document.querySelector(
+          "#modal-dropsheet .overflow-y-auto",
+        );
+        if (scrollContainer) scrollContainer.scrollTop = 0;
+      }
+
+      function updateModalDeleteUI() {
+        const knob = document.getElementById("toggle-modal-delete-knob");
+        const bg = document.getElementById("toggle-modal-delete");
+        if (tempDeleteCsv) {
           bg.classList.replace("bg-zinc-600", "bg-rose-500");
           knob.classList.replace("translate-x-1", "translate-x-4");
         } else {
@@ -858,15 +1083,45 @@
         }
       }
 
-      function toggleDeleteCsv() {
-        window.deleteCsvsEnabled = !window.deleteCsvsEnabled;
-        updateDeleteCsvUI();
+      function toggleModalDelete() {
+        tempDeleteCsv = !tempDeleteCsv;
+        updateModalDeleteUI();
+      }
+
+      async function pickDropFolder() {
         if (window.pywebview && window.pywebview.api) {
-          window.pywebview.api.set_delete_csvs(window.deleteCsvsEnabled);
+          const res = await window.pywebview.api.select_folder_dialog_only();
+          if (res) {
+            tempDropFolder = res;
+            document.getElementById("lbl-drop-folder").innerText =
+              tempDropFolder;
+            document.getElementById("lbl-drop-folder").title = tempDropFolder;
+          }
         }
       }
 
-      updateDeleteCsvUI();
+      async function saveDropsheetSettings() {
+        const get1Dec = (id, def) => {
+          const num = parseFloat(document.getElementById(id).value);
+          return isNaN(num) ? def : num.toFixed(1);
+        };
+        const payload = {
+          folder: tempDropFolder,
+          delete_csvs: tempDeleteCsv,
+          formatting: {
+            ld_flag: get1Dec("ld-flag", "3.0"),
+            ld_danger: get1Dec("ld-danger", "6.0"),
+            id_flag: get1Dec("id-flag", "4.0"),
+            id_danger: get1Dec("id-danger", "8.0"),
+            td_flag: get1Dec("td-flag", "5.0"),
+            td_danger: get1Dec("td-danger", "9.9"),
+          },
+        };
+        if (window.pywebview && window.pywebview.api) {
+          await window.pywebview.api.save_dropsheet_settings(payload);
+        }
+        closeModal("modal-dropsheet");
+      }
 
       // Format Date Display (Smart Yesterday/Today or DD-MMM-YYYY)
       function formatDateDisplay(dateStr) {
@@ -904,11 +1159,6 @@
         if (window.pywebview && window.pywebview.api) {
           const state = await window.pywebview.api.get_initial_state();
           currentIsoDate = state.selected_date;
-
-          if (state.delete_csvs !== undefined) {
-            window.deleteCsvsEnabled = Boolean(state.delete_csvs);
-            updateDeleteCsvUI();
-          }
 
           document.getElementById("label-selected-date").innerText =
             formatDateDisplay(currentIsoDate);
@@ -1541,11 +1791,6 @@
           document.getElementById("input-date").value || currentIsoDate;
         if (window.pywebview && window.pywebview.api)
           await window.pywebview.api.open_output_folder(targetDate);
-      }
-      async function changeDropFolder() {
-        if (window.pywebview && window.pywebview.api) {
-          await window.pywebview.api.select_dropsheet_folder();
-        }
       }
 
       // --- MODAL LOGIC ---
