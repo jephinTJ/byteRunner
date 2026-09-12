@@ -181,7 +181,7 @@
               >
               <span
                 class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/50"
-                >v2.0</span
+                >v3.0</span
               >
             </div>
             <div class="flex items-center gap-1.5 mt-0.5">
@@ -270,38 +270,42 @@
         class="rounded-2xl border border-surface-border bg-surface-card overflow-hidden shadow-sm transition-all duration-300"
       >
         <div
-          class="relative overflow-hidden px-6 py-3.5 flex items-center justify-between border-b border-surface-border/60 bg-surface-hover/30"
+          onclick="toggleCollapse('dp1')"
+          class="relative overflow-hidden px-6 py-3.5 flex items-center justify-between border-b border-surface-border/60 bg-surface-hover/30 hover:bg-surface-hover/50 transition-colors cursor-pointer group"
         >
-          <!-- Header Cumulative Progress Bar Layer -->
           <div
             id="header-progress-bar-dp1"
-            class="absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] duration-500 ease-out"
+            class="absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] duration-500 ease-out z-0"
           ></div>
 
           <div class="relative z-10 flex items-center gap-3">
-            <button
-              onclick="toggleCollapse('dp1')"
-              class="p-1 rounded-lg hover:bg-surface-border/60 text-zinc-400 hover:text-white transition-all"
+            <div
+              class="p-1 rounded-lg text-zinc-400 group-hover:text-white transition-all"
             >
               <i
                 id="icon-collapse-dp1"
                 data-lucide="chevron-down"
                 class="w-5 h-5 transition-transform duration-200 -rotate-90"
               ></i>
-            </button>
+            </div>
             <div class="flex items-center gap-2.5">
-              <h2 class="text-sm font-bold text-white tracking-tight">
+              <h2
+                class="text-sm font-bold text-white tracking-tight select-none"
+              >
                 Games DP1
               </h2>
               <span
                 id="badge-task-count-dp1"
-                class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60"
+                class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60 select-none"
                 >0 Active</span
               >
             </div>
           </div>
 
-          <div class="flex items-center gap-3">
+          <div
+            class="relative z-10 flex items-center gap-3"
+            onclick="event.stopPropagation()"
+          >
             <div class="relative group">
               <i
                 data-lucide="search"
@@ -349,38 +353,42 @@
         class="rounded-2xl border border-surface-border bg-surface-card overflow-hidden shadow-sm transition-all duration-300"
       >
         <div
-          class="relative overflow-hidden px-6 py-3.5 flex items-center justify-between border-b border-surface-border/60 bg-surface-hover/30"
+          onclick="toggleCollapse('all_geo')"
+          class="relative overflow-hidden px-6 py-3.5 flex items-center justify-between border-b border-surface-border/60 bg-surface-hover/30 hover:bg-surface-hover/50 transition-colors cursor-pointer group"
         >
-          <!-- Header Cumulative Progress Bar Layer -->
           <div
             id="header-progress-bar-all_geo"
-            class="absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] duration-500 ease-out"
+            class="absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] duration-500 ease-out z-0"
           ></div>
 
           <div class="relative z-10 flex items-center gap-3">
-            <button
-              onclick="toggleCollapse('all_geo')"
-              class="p-1 rounded-lg hover:bg-surface-border/60 text-zinc-400 hover:text-white transition-all"
+            <div
+              class="p-1 rounded-lg text-zinc-400 group-hover:text-white transition-all"
             >
               <i
                 id="icon-collapse-all_geo"
                 data-lucide="chevron-down"
                 class="w-5 h-5 transition-transform duration-200 -rotate-90"
               ></i>
-            </button>
+            </div>
             <div class="flex items-center gap-2.5">
-              <h2 class="text-sm font-bold text-white tracking-tight">
+              <h2
+                class="text-sm font-bold text-white tracking-tight select-none"
+              >
                 All Geo DP1
               </h2>
               <span
                 id="badge-task-count-all_geo"
-                class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60"
+                class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60 select-none"
                 >0 Active</span
               >
             </div>
           </div>
 
-          <div class="flex items-center gap-3">
+          <div
+            class="relative z-10 flex items-center gap-3"
+            onclick="event.stopPropagation()"
+          >
             <div class="relative group">
               <i
                 data-lucide="search"
@@ -413,6 +421,118 @@
           <div
             id="loading-skeleton-all_geo"
             class="p-6 text-center text-xs text-zinc-500 flex flex-col items-center justify-center gap-2"
+          >
+            <i
+              data-lucide="loader-2"
+              class="w-5 h-5 animate-spin text-brand-500"
+            ></i>
+            <span>Fetching tasks...</span>
+          </div>
+        </div>
+      </div>
+      <!-- 3. Drop Sheets / Custom Progression (2-Column Grid Layout) -->
+      <div
+        class="rounded-2xl border border-surface-border bg-surface-card overflow-hidden shadow-sm transition-all duration-300"
+      >
+        <div
+          onclick="toggleCollapse('dropsheet')"
+          class="relative overflow-hidden px-6 py-3.5 flex items-center justify-between border-b border-surface-border/60 bg-surface-hover/30 hover:bg-surface-hover/50 transition-colors cursor-pointer group"
+        >
+          <div
+            id="header-progress-bar-dropsheet"
+            class="absolute inset-y-0 left-0 w-0 pointer-events-none transition-[width] duration-500 ease-out z-0"
+          ></div>
+
+          <div
+            class="relative z-10 flex items-center gap-3 pointer-events-none"
+          >
+            <div
+              class="p-1 rounded-lg text-zinc-400 group-hover:text-white transition-all"
+            >
+              <i
+                id="icon-collapse-dropsheet"
+                data-lucide="chevron-down"
+                class="w-5 h-5 transition-transform duration-200 -rotate-90"
+              ></i>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <h2
+                class="text-sm font-bold text-white tracking-tight select-none"
+              >
+                Drop Sheets
+              </h2>
+              <span
+                id="badge-task-count-dropsheet"
+                class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60 select-none"
+                >0 Active</span
+              >
+            </div>
+          </div>
+
+          <div
+            class="relative z-10 flex items-center gap-3"
+            onclick="event.stopPropagation()"
+          >
+            <div class="relative group-search">
+              <i
+                data-lucide="search"
+                class="absolute left-2.5 top-[7px] w-3.5 h-3.5 text-zinc-500 transition-colors"
+              ></i>
+              <input
+                type="text"
+                id="input-search-dropsheet"
+                onkeyup="filterTasks('dropsheet')"
+                placeholder="Search games..."
+                class="bg-surface-base border border-surface-border rounded-lg pl-8 pr-3 py-1.5 text-xs text-white placeholder:text-zinc-600 focus:outline-none focus:border-brand-500 transition-all w-28 focus:w-44 shadow-inner"
+              />
+            </div>
+
+            <!-- Larger Folder Picker Button -->
+            <button
+              onclick="changeDropFolder()"
+              class="group flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-base border border-surface-border hover:border-brand-500 hover:bg-brand-500/10 transition-all cursor-pointer shadow-sm"
+              title="Change Source Folder"
+            >
+              <i
+                data-lucide="folder-search"
+                class="w-4 h-4 text-zinc-400 group-hover:text-brand-500 transition-colors"
+              ></i>
+              <span
+                class="text-xs font-semibold text-zinc-300 group-hover:text-brand-500 transition-colors select-none"
+                >Source Folder</span
+              >
+            </button>
+
+            <!-- Reverted Delete CSVs Pill Toggle -->
+            <div
+              class="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-surface-base border border-surface-border"
+            >
+              <span
+                class="text-[10px] font-bold text-zinc-400 uppercase tracking-wider select-none"
+                >Delete CSVs</span
+              >
+              <button
+                id="toggle-delete-csv"
+                onclick="toggleDeleteCsv()"
+                class="relative inline-flex h-4 w-8 items-center rounded-full bg-zinc-600 transition-colors duration-200 focus:outline-none"
+              >
+                <span
+                  id="toggle-delete-csv-knob"
+                  class="inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 translate-x-1 pointer-events-none"
+                ></span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Note the "grid grid-cols-2 gap-3" classes for the side-by-side layout -->
+        <div
+          id="tasks-container-dropsheet"
+          class="p-4 pr-2 grid grid-cols-2 gap-3 transition-all duration-300 max-h-[280px] overflow-y-auto hidden"
+        >
+          <div
+            id="loading-skeleton-dropsheet"
+            class="col-span-2 p-6 text-center text-xs text-zinc-500 flex flex-col items-center justify-center gap-2"
           >
             <i
               data-lucide="loader-2"
@@ -496,6 +616,13 @@
     <!-- Backdrop (Hidden by default) -->
     <div
       id="modal-backdrop"
+      onclick="
+        if (event.target === this) {
+          closeModal('modal-info');
+          closeModal('modal-date');
+          closeModal('modal-creds');
+        }
+      "
       class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] hidden opacity-0 transition-opacity duration-300 flex items-center justify-center p-4"
     >
       <!-- CREDENTIALS MODAL -->
@@ -639,7 +766,70 @@
             onclick="saveDate()"
             class="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-black font-bold text-xs transition-colors shadow-lg shadow-brand-500/20 active:scale-95"
           >
-            Set Date
+            Apply Date
+          </button>
+        </div>
+      </div>
+
+      <!-- INFO MODAL -->
+      <div
+        id="modal-info"
+        class="hidden transform scale-95 opacity-0 transition-all duration-300 w-full max-w-sm bg-surface-card border border-surface-border rounded-2xl shadow-2xl overflow-hidden"
+      >
+        <div class="p-6">
+          <div class="flex items-center gap-3 mb-6">
+            <div class="p-2 rounded-lg bg-brand-500/10 text-brand-500">
+              <i data-lucide="info" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3
+                id="info-game-name"
+                class="text-white font-bold tracking-tight"
+              >
+                Game Presets
+              </h3>
+              <p class="text-xs text-zinc-500">
+                Use these saved filters in breakdowns page in ByteBrew.
+              </p>
+            </div>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <label
+                class="block text-xs font-semibold text-zinc-400 mb-1.5 ml-1"
+                >Start Event Preset</label
+              >
+              <input
+                id="info-ret-preset"
+                type="text"
+                readonly
+                tabindex="-1"
+                class="w-full bg-surface-base border border-surface-border rounded-xl px-4 py-2.5 text-sm text-white pointer-events-none select-none focus:outline-none focus:ring-0 focus:border-surface-border transition-all cursor-default"
+              />
+            </div>
+            <div>
+              <label
+                class="block text-xs font-semibold text-zinc-400 mb-1.5 ml-1"
+                >Complete Event Preset</label
+              >
+              <input
+                id="info-ad-preset"
+                type="text"
+                readonly
+                tabindex="-1"
+                class="w-full bg-surface-base border border-surface-border rounded-xl px-4 py-2.5 text-sm text-white pointer-events-none select-none focus:outline-none focus:ring-0 focus:border-surface-border transition-all cursor-default"
+              />
+            </div>
+          </div>
+        </div>
+        <div
+          class="px-6 py-4 bg-surface-base/50 border-t border-surface-border flex items-center justify-end"
+        >
+          <button
+            onclick="closeModal('modal-info')"
+            class="px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-black font-bold text-xs transition-colors shadow-lg shadow-brand-500/20 active:scale-95"
+          >
+            Close
           </button>
         </div>
       </div>
@@ -647,10 +837,36 @@
     <script>
       lucide.createIcons();
 
-      let tasksData = { dp1: [], all_geo: [] };
-      let isCollapsed = { dp1: true, all_geo: true };
+      let tasksData = { dp1: [], all_geo: [], dropsheet: [] };
+      let isCollapsed = { dp1: true, all_geo: true, dropsheet: true };
       let currentIsoDate = "";
       let flatpickrInstance = null;
+      window.deleteCsvsEnabled =
+        localStorage.getItem("deleteCsvsEnabled") === "true";
+
+      function updateDeleteCsvUI() {
+        const knob = document.getElementById("toggle-delete-csv-knob");
+        const bg = document.getElementById("toggle-delete-csv");
+        if (!knob || !bg) return;
+
+        if (window.deleteCsvsEnabled) {
+          bg.classList.replace("bg-zinc-600", "bg-rose-500");
+          knob.classList.replace("translate-x-1", "translate-x-4");
+        } else {
+          bg.classList.replace("bg-rose-500", "bg-zinc-600");
+          knob.classList.replace("translate-x-4", "translate-x-1");
+        }
+      }
+
+      function toggleDeleteCsv() {
+        window.deleteCsvsEnabled = !window.deleteCsvsEnabled;
+        updateDeleteCsvUI();
+        if (window.pywebview && window.pywebview.api) {
+          window.pywebview.api.set_delete_csvs(window.deleteCsvsEnabled);
+        }
+      }
+
+      updateDeleteCsvUI();
 
       // Format Date Display (Smart Yesterday/Today or DD-MMM-YYYY)
       function formatDateDisplay(dateStr) {
@@ -689,6 +905,11 @@
           const state = await window.pywebview.api.get_initial_state();
           currentIsoDate = state.selected_date;
 
+          if (state.delete_csvs !== undefined) {
+            window.deleteCsvsEnabled = Boolean(state.delete_csvs);
+            updateDeleteCsvUI();
+          }
+
           document.getElementById("label-selected-date").innerText =
             formatDateDisplay(currentIsoDate);
 
@@ -720,6 +941,7 @@
             tasksData = await window.pywebview.api.load_tasks_from_sheet();
             renderTasks("dp1", tasksData.dp1 || []);
             renderTasks("all_geo", tasksData.all_geo || []);
+            renderTasks("dropsheet", tasksData.dropsheet || []);
           }
         } catch (err) {
           console.error(err);
@@ -746,7 +968,7 @@
         container.innerHTML = tasks
           .map((t, idx) => {
             const title = t["Game Name"] || t["Game ID"] || "Unnamed Game";
-            const outputName = t["Output Name"] || title;
+            const outputName = t["Output Prefix"] || t["Output Name"] || title;
             const initials = title
               .split(" ")
               .map((n) => n[0])
@@ -782,8 +1004,19 @@
                   </div>
                 </div>
               </div>
-              <div class="flex items-center gap-3">
+              <div class="flex items-center gap-2">
                 <div id="task-error-${queue}-${idx}" class="hidden mr-1"></div>
+                
+                ${
+                  queue === "dropsheet"
+                    ? `
+                <button onclick="showDropInfo('${title.replace(/'/g, "\\'")}', '${(t["Level Start"] || "Not specified").replace(/'/g, "\\'")}', '${(t["Level Complete"] || "Not specified").replace(/'/g, "\\'")}')" class="p-1.5 rounded-lg text-zinc-500 hover:bg-surface-border hover:text-white transition-all cursor-pointer" title="View Required ByteBrew Presets">
+                  <i data-lucide="info" class="w-4 h-4"></i>
+                </button>
+                `
+                    : ""
+                }
+
                 <button id="btn-task-${queue}-${idx}" onclick="runSingle('${queue}', ${idx})" class="px-3.5 py-1.5 rounded-lg bg-surface-card hover:bg-brand-600 text-zinc-300 hover:text-black font-semibold text-xs border border-surface-border hover:border-brand-500 transition-all active:scale-95">
                   Run
                 </button>
@@ -844,10 +1077,31 @@
       }
 
       async function runSingle(queue, idx) {
+        // Enforce max 1 concurrent task for Drop Sheets
+        if (queue === "dropsheet") {
+          for (let key of window.activeTasksTracker) {
+            if (key.startsWith("dropsheet-")) {
+              appendLog(
+                "[System] Cannot start task. Another Drop Sheet is currently running.",
+                "dropsheet",
+                null,
+              );
+              return;
+            }
+          }
+        }
+
         const targetDate =
           document.getElementById("input-date").value || currentIsoDate;
+        const delCsv = window.deleteCsvsEnabled || false;
+
         if (window.pywebview && window.pywebview.api) {
-          await window.pywebview.api.run_single_task(queue, idx, targetDate);
+          await window.pywebview.api.run_single_task(
+            queue,
+            idx,
+            targetDate,
+            delCsv,
+          );
         }
       }
 
@@ -1288,6 +1542,11 @@
         if (window.pywebview && window.pywebview.api)
           await window.pywebview.api.open_output_folder(targetDate);
       }
+      async function changeDropFolder() {
+        if (window.pywebview && window.pywebview.api) {
+          await window.pywebview.api.select_dropsheet_folder();
+        }
+      }
 
       // --- MODAL LOGIC ---
       function openModal(modalId) {
@@ -1310,6 +1569,12 @@
           backdrop.classList.add("hidden");
           modal.classList.add("hidden");
         }, 300);
+      }
+      function showDropInfo(gameName, retPreset, adPreset) {
+        document.getElementById("info-game-name").innerText = gameName;
+        document.getElementById("info-ret-preset").value = retPreset;
+        document.getElementById("info-ad-preset").value = adPreset;
+        openModal("modal-info");
       }
 
       async function onCredsClick() {
