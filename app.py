@@ -124,6 +124,51 @@ class DesktopAPI:
             "delete_csvs": delete_csvs
         }
 
+    def get_dropsheet_settings(self):
+        data = {}
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r") as f:
+                    data = json.load(f)
+            except Exception:
+                pass
+        return {
+            "folder": data.get("dropsheet_folder", self.dropsheet_folder),
+            "delete_csvs": data.get("delete_csvs", False),
+            "formatting": data.get("dropsheet_formatting", {})
+        }
+
+    def save_dropsheet_settings(self, payload):
+        data = {}
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r") as f:
+                    data = json.load(f)
+            except Exception:
+                pass
+        
+        self.dropsheet_folder = payload.get("folder", self.dropsheet_folder)
+        data["dropsheet_folder"] = self.dropsheet_folder
+        data["delete_csvs"] = bool(payload.get("delete_csvs", False))
+        data["dropsheet_formatting"] = payload.get("formatting", {})
+        
+        with open(SETTINGS_FILE, "w") as f:
+            json.dump(data, f)
+        
+        self.emit_log("[System] Drop Sheet configurations saved.")
+        return True
+
+    def select_folder_dialog_only(self):
+        if self._window:
+            try:
+                dialog_type = webview.FileDialog.FOLDER
+            except AttributeError:
+                dialog_type = webview.FOLDER_DIALOG
+            result = self._window.create_file_dialog(dialog_type)
+            if result and len(result) > 0:
+                return result[0]
+        return None
+    
     def set_delete_csvs(self, enabled):
         data = {}
         if SETTINGS_FILE.exists():
@@ -244,18 +289,123 @@ class DesktopAPI:
             self.emit_log(f"[{g_name}] Processing in: {self.dropsheet_folder}", "dropsheet", idx)
             module_scope = {}
             exec(code_text, module_scope)
+            
+            # Fetch latest configurations dynamically
+            settings = self.get_dropsheet_settings()
+            use_delete = settings.get("delete_csvs", False)
+
+            import time
+            start_time = time.time()
+
+            # Block the online script from opening the file immediately
             res = module_scope['run'](
                 folder_path=self.dropsheet_folder,
                 custom_filename=prefix,
-                delete_csvs=delete_csvs,
-                auto_open=True
+                delete_csvs=use_delete,
+                auto_open=False
             )
+            
+            # Locate target Excel file (from return value or auto-detect latest file)
+            target_file = None
+            if isinstance(res, str) and res.endswith('.xlsx') and os.path.exists(res):
+                target_file = res
+            else:
+                folder = Path(self.dropsheet_folder)
+                candidates = []
+                if prefix:
+                    candidates = [f for f in folder.glob(f"*{prefix}*.xlsx") if f.is_file()]
+                if not candidates:
+                    candidates = [f for f in folder.glob("*.xlsx") if f.is_file()]
+                
+                # Find files created or modified around this execution run
+                recent = [f for f in candidates if f.stat().st_mtime >= (start_time - 5)]
+                pool = recent if recent else candidates
+                if pool:
+                    target_file = str(max(pool, key=lambda p: p.stat().st_mtime))
+
+            if target_file and os.path.exists(target_file):
+                self._apply_excel_formatting(target_file, idx)
+                if os.name == 'nt':
+                    os.startfile(target_file)
+            else:
+                self.emit_log(f"[{g_name}] Notice: Output Excel file could not be detected.", "dropsheet", idx)
+
             self.emit_log(f"[{g_name}] Completed successfully.", "dropsheet", idx)
             return True
         except Exception as e:
             self.emit_log(f"[Error executing {g_name}]: {e}", "dropsheet", idx)
             return False
         
+    def _apply_excel_formatting(self, file_path, idx):
+        try:
+            import openpyxl
+            from openpyxl.styles import PatternFill, Font
+            from openpyxl.formatting.rule import CellIsRule
+            from openpyxl.utils import get_column_letter
+        except ImportError:
+            self.emit_log("[System] openpyxl missing. Skipping conditional styling.", "dropsheet", idx)
+            return
+
+        try:
+            settings = self.get_dropsheet_settings()
+            fmt = settings.get("formatting", {})
+            
+            def get_val(key, default):
+                try:
+                    return round(float(fmt.get(key, default)), 1) / 100.0
+                except (ValueError, TypeError):
+                    return round(float(default), 1) / 100.0
+
+            # Map the exact frontend logic IDs
+            rules_config = {
+                "Level Drop%": {
+                    "flag": get_val("ld_flag", 3.0),
+                    "danger": get_val("ld_danger", 6.0)
+                },
+                "Interruption Drop%": {
+                    "flag": get_val("id_flag", 4.0),
+                    "danger": get_val("id_danger", 8.0)
+                },
+                "Total Drop%": {
+                    "flag": get_val("td_flag", 5.0),
+                    "danger": get_val("td_danger", 9.9)
+                }
+            }
+
+            wb = openpyxl.load_workbook(file_path)
+            ws = wb.active
+
+            # Preset styling arrays based on requirement
+            fill_flag = PatternFill(start_color="FF5050", end_color="FF5050", fill_type="solid")
+            font_flag = Font(color="000000", bold=False)
+            
+            fill_danger = PatternFill(start_color="C00000", end_color="C00000", fill_type="solid")
+            font_danger = Font(color="000000", bold=False)
+
+            header_row = 1
+            col_map = {}
+            for col in range(1, ws.max_column + 1):
+                cell_val = ws.cell(row=header_row, column=col).value
+                if cell_val in rules_config:
+                    col_map[cell_val] = get_column_letter(col)
+
+            for col_name, col_letter in col_map.items():
+                rng = f"{col_letter}2:{col_letter}{ws.max_row}"
+                cfg = rules_config[col_name]
+                
+                # Rule 1: Danger threshold (Dark Red, White text)
+                rule_danger = CellIsRule(operator='greaterThanOrEqual', formula=[str(cfg["danger"])], stopIfTrue=True, fill=fill_danger, font=font_danger)
+                # Rule 2: Flagged threshold (Light Red, Black text)
+                rule_flag = CellIsRule(operator='greaterThanOrEqual', formula=[str(cfg["flag"])], stopIfTrue=True, fill=fill_flag, font=font_flag)
+
+                ws.conditional_formatting.add(rng, rule_danger)
+                ws.conditional_formatting.add(rng, rule_flag)
+
+            wb.save(file_path)
+            self.emit_log("[System] Dynamic custom cell formatting applied.", "dropsheet", idx)
+        except Exception as e:
+            self.emit_log(f"[Error] Excel formatting failed: {str(e)}", "dropsheet", idx)
+
     def _execute_job(self, task_dict, queue_type, idx, target_date):
         self.abort_signal = False
         
