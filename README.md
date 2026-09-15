@@ -75,7 +75,7 @@ python app.py
 Compile the application into an optimized directory-based binary using PyInstaller:
 
 ```bash
-pyinstaller --noconfirm --onedir --windowed --icon="icon.ico" --add-data "ui;ui" --name "ByteRunner" app.py
+pyinstaller --noconfirm --onedir --windowed --icon="icon.ico" --add-data "ui;ui" --add-data "ui/bb.png;." --collect-all "playwright" --collect-all "openpyxl" --hidden-import "pandas" --hidden-import "requests" --name "ByteRunner" app.py
 ```
 
 The compiled application folder will be generated inside the `dist/ByteRunner/` directory. Remember to keep the bundled `_internal/` and `ui/` directories alongside the executable.
