@@ -1583,71 +1583,29 @@ def download_csv(page, output_path, game_name):
     menu_button.click()
     page.wait_for_timeout(400)
 
-    # ------------------------------------------------------------
-    # PRIMARY METHOD:
-    # Mechanics clearly renders a visible "Download CSV" item.
-    # Click that directly.
-    # ------------------------------------------------------------
-    visible_download = page.get_by_text(
-        re.compile(r"^\s*Download\s+CSV\s*$", re.I)
-    )
+    # 1. Target both Mechanics and Funnel Explorer download anchors
+    download_btn = page.locator("#mechanictable-download, #explorer-datatable-download, a:has-text('Download CSV')").first
 
-    download_item = None
+    try:
+        download_btn.wait_for(state="visible", timeout=5000)
+    except Exception:
+        screenshot(page, game_name, "download_csv_item_not_found")
+        raise RuntimeError('Three-dot menu opened, but no visible "Download CSV" item could be found.')
 
-    for i in range(visible_download.count()):
-        try:
-            item = visible_download.nth(i)
-            if item.is_visible():
-                download_item = item
-                break
-        except Exception:
-            pass
+    log("Export option located.")
+    log("`Clicker` Triggering CSV download...")
 
-    if download_item is not None:
-        log("Export option located.")
-        log("`Clicker` Triggering CSV download...")
+    # 2. Neutralize default link navigation and trigger clean export
+    with page.expect_download(timeout=45000) as download_info:
+        download_btn.evaluate("""el => {
+            el.removeAttribute('target');
+            if (el.getAttribute('href') === '#') {
+                el.setAttribute('href', 'javascript:void(0);');
+            }
+            el.click();
+        }""")
 
-        with page.expect_download(timeout=30000) as download_info:
-            download_item.click()
-
-        download = download_info.value
-
-    else:
-        # --------------------------------------------------------
-        # FALLBACK METHOD:
-        # Funnel Explorer historically exposed this exact ID.
-        # --------------------------------------------------------
-        datatable_download = page.locator("#explorer-datatable-download")
-
-        try:
-            datatable_download.wait_for(state="visible", timeout=3000)
-        except PlaywrightTimeoutError:
-            screenshot(page, game_name, "download_csv_item_not_found")
-
-            # Print the menu's visible text for debugging.
-            try:
-                visible_texts = page.locator("body").inner_text()
-                lines = [
-                    line.strip()
-                    for line in visible_texts.splitlines()
-                    if "download" in line.lower()
-                ]
-                log(f"Visible download-related text: {lines[:10]}")
-            except Exception:
-                pass
-
-            raise RuntimeError(
-                'Three-dot menu opened, but no visible "Download CSV" item '
-                "could be found."
-            )
-
-        log("Export option located.")
-        log("`Clicker` Triggering CSV download...")
-
-        with page.expect_download(timeout=30000) as download_info:
-            datatable_download.click()
-
-        download = download_info.value
+    download = download_info.value
 
     if output_path.exists():
         output_path.unlink()
