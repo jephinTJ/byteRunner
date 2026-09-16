@@ -181,7 +181,7 @@
               >
               <span
                 class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/50"
-                >v4.0</span
+                >v5.0</span
               >
             </div>
             <div class="flex items-center gap-1.5 mt-0.5">
@@ -1643,6 +1643,10 @@
           .replace(
             /\[Aborted\]/g,
             '<span class="text-amber-500 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shadow-sm">Aborted</span>',
+          )
+          .replace(
+            /\[Notice\]/g,
+            '<span class="text-amber-400 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shadow-sm">[Notice]</span>',
           )
           .replace(
             /(Error|FATAL|Failed|Timeout)/gi,
