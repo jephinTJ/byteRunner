@@ -55,6 +55,7 @@ DEBUG_DIR = SYSTEM_DIR / "debug"
 LOG_CALLBACK = None
 CURRENT_DATE_DIR = None  # Global tracker to ensure logs and screenshots route to the exact daily folder
 CURRENT_QUEUE_TYPE = "dp1"  # Global tracker to split logs between DP1 and All Geo
+CURRENT_RUN_MODE = "Individual Run"  # Global tracker: "RUN ALL" vs "Individual Run"
 
 def log(message):
     global CURRENT_DATE_DIR, CURRENT_QUEUE_TYPE
@@ -74,13 +75,40 @@ def log(message):
         except Exception:
             pass
             
-    # Requirement 4: Append all terminal output to a segregated master log in the daily folder
+    # Requirement 4: Append all activity historically to a structured Markdown log in the daily folder
     if CURRENT_DATE_DIR:
         try:
             CURRENT_DATE_DIR.mkdir(parents=True, exist_ok=True)
-            log_filename = f"execution_log_{CURRENT_QUEUE_TYPE}.txt"
-            with open(CURRENT_DATE_DIR / log_filename, "a", encoding="utf-8") as f:
-                f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg_str}\n")
+            log_filename = f"execution_log_{CURRENT_QUEUE_TYPE}.md"
+            log_path = CURRENT_DATE_DIR / log_filename
+            is_new = not log_path.exists()
+
+            now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            time_only = datetime.now().strftime("%H:%M:%S")
+            clean_msg = message.replace("[ByteBrew] ", "").strip()
+
+            with open(log_path, "a", encoding="utf-8") as f:
+                if is_new:
+                    q_title = "All Geo DP1" if CURRENT_QUEUE_TYPE == "all_geo" else "Games DP1"
+                    f.write(f"# 📋 ByteRunner Execution Log — {q_title}\n")
+                    f.write(f"**Date:** {CURRENT_DATE_DIR.name}\n\n---\n\n")
+
+                if "Starting Funnel 1/" in clean_msg:
+                    game_match = re.search(r'\[(.*?)\]', clean_msg)
+                    game_tag = f" — {game_match.group(1)}" if game_match else ""
+                    mode_badge = f" `[{CURRENT_RUN_MODE}]`" if CURRENT_RUN_MODE else ""
+                    f.write(f"\n## 🎮 Run Session: {game_tag}{mode_badge} ({now_str})\n\n")
+                    f.write(f"- `{time_only}` **Funnel Started:** {clean_msg}\n")
+                elif "Starting Funnel" in clean_msg:
+                    f.write(f"\n### 🔄 {clean_msg} ({time_only})\n\n")
+                elif any(err_word in clean_msg for err_word in ["Error", "FATAL", "FAILED", "Timeout"]):
+                    f.write(f"\n> ❌ **[{time_only}] ERROR:** {clean_msg}\n\n")
+                elif "[Notice]" in clean_msg or "Self-healing" in clean_msg:
+                    f.write(f"\n> ⚠️ **[{time_only}] NOTICE:** {clean_msg}\n\n")
+                elif "Finished '" in clean_msg or "created:" in clean_msg:
+                    f.write(f"- `{time_only}` ✅ **{clean_msg}**\n")
+                else:
+                    f.write(f"- `{time_only}` {clean_msg}\n")
         except Exception:
             pass
 
@@ -260,7 +288,7 @@ def wait_for_login_if_needed(page, target_url, email=None, password=None):
         submit_btn = page.locator('button[type="submit"], button:has-text("Log In"), button:has-text("Sign In")').first
         submit_btn.click()
 
-        page.wait_for_url("**/console/**", timeout=15000)
+        page.wait_for_url(re.compile(r"/(console|overviewdashboard)"), timeout=15000)
         log("Automated login successful.")
     except Exception as err:
         log(f"Automated login failed: {err}")
@@ -1595,23 +1623,34 @@ def download_csv(page, output_path, game_name):
     log("Export option located.")
     log("`Clicker` Triggering CSV download...")
 
-    # 2. Neutralize default link navigation and trigger clean export
-    with page.expect_download(timeout=45000) as download_info:
-        download_btn.evaluate("""el => {
-            el.removeAttribute('target');
-            if (el.getAttribute('href') === '#') {
-                el.setAttribute('href', 'javascript:void(0);');
-            }
-            el.click();
-        }""")
+    # 2. Context-level download sniffing: intercepts the file globally without forcing active tab navigation
+    with page.context.expect_event("download", timeout=45000) as download_info:
+        download_btn.click(force=True)
 
     download = download_info.value
 
     if output_path.exists():
         output_path.unlink()
 
+    # Save to disk FIRST while the file is actively streaming across the network
     download.save_as(str(output_path))
     log(f"Raw data saved: {output_path.name}")
+
+    # Safely close only the popup tab that opened for this download, leaving anchor & dashboard intact
+    try:
+        popup_tab = download.page
+        if popup_tab and popup_tab != page:
+            popup_tab.close()
+    except Exception:
+        pass
+
+    # Safely close any transient popup tab opened by target="_blank" AFTER save completes
+    for p in page.context.pages:
+        if p != page and p.url != "about:blank":
+            try:
+                p.close()
+            except Exception:
+                pass
 
 
 def get_game_users_flexible(df, candidates):
@@ -2006,8 +2045,12 @@ def process_game(base_page, game, email=None, password=None):
     outputs = []
     browser_context = base_page.context
 
+    # Anchor Tab Lifeline: Park base_page at about:blank so context never drops to 0 open tabs
     try:
-        base_page.close()
+        if base_page.is_closed():
+            base_page = browser_context.new_page()
+        if base_page.url != "about:blank":
+            base_page.goto("about:blank")
     except Exception:
         pass
 

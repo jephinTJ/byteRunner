@@ -1,6 +1,6 @@
 import os
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import webview
 import threading
@@ -48,15 +48,42 @@ class DesktopAPI:
                 pass
         self.dropsheet_folder = saved_folder
         self.abort_signal = False
+        self.current_dropsheet_mode = "Individual Run"
 
     def emit_log(self, msg, queue_type=None, idx=None):
-        """Pushes backend log events to the frontend UI terminal."""
+        """Pushes backend log events to the frontend UI terminal and writes Drop Sheet logs to disk."""
         if self._window:
             safe_msg = json.dumps(msg)
             q_val = json.dumps(queue_type) if queue_type else "null"
             idx_val = idx if idx is not None else "null"
             try:
                 self._window.evaluate_js(f"appendLog({safe_msg}, {q_val}, {idx_val})")
+            except Exception:
+                pass
+
+        # Dedicated historical Markdown logger for Drop Sheets
+        if queue_type == "dropsheet":
+            try:
+                target_dir = Path(self.dropsheet_folder) if self.dropsheet_folder and Path(self.dropsheet_folder).exists() else UPLOAD_DIR
+                target_dir.mkdir(parents=True, exist_ok=True)
+                log_path = target_dir / "execution_log_dropsheet.md"
+                is_new = not log_path.exists()
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                time_only = datetime.now().strftime("%H:%M:%S")
+
+                with open(log_path, "a", encoding="utf-8") as f:
+                    if is_new:
+                        f.write("# 📋 ByteRunner Execution Log — Drop Sheets\n\n---\n\n")
+                    if "Processing in:" in msg:
+                        mode_tag = f" `[{getattr(self, 'current_dropsheet_mode', 'Individual Run')}]`"
+                        f.write(f"\n## 📊 Task Run{mode_tag} ({now_str})\n\n")
+                        f.write(f"- `{time_only}` {msg}\n")
+                    elif any(err in msg for err in ["[Error", "Fatal", "failed"]):
+                        f.write(f"\n> ❌ **[{time_only}] ERROR:** {msg}\n\n")
+                    elif "Completed successfully" in msg:
+                        f.write(f"- `{time_only}` ✅ **{msg}**\n")
+                    else:
+                        f.write(f"- `{time_only}` {msg}\n")
             except Exception:
                 pass
 
@@ -406,7 +433,60 @@ class DesktopAPI:
         except Exception as e:
             self.emit_log(f"[Error] Excel formatting failed: {str(e)}", "dropsheet", idx)
 
-    def _execute_job(self, task_dict, queue_type, idx, target_date):
+    def _is_context_alive(self, context):
+        """Clean browser check: verifies Chromium is alive without running JS on protected chrome:// URLs."""
+        if not context:
+            return False
+        try:
+            pages = context.pages
+            if not pages:
+                test_page = context.new_page()
+                test_page.close()
+                return True
+            return not pages[0].is_closed()
+        except Exception:
+            return False
+
+    def _launch_browser_context(self, p):
+        profile_dir = SYSTEM_DIR / "bytebrew_profile"
+        profile_dir.mkdir(parents=True, exist_ok=True)
+        for channel in ["chrome", "msedge", None]:
+            try:
+                kwargs = {
+                    "user_data_dir": str(profile_dir),
+                    "headless": True,
+                    "accept_downloads": True,
+                    "viewport": {"width": 1600, "height": 950},
+                    "args": [
+                        "--disable-session-crashed-bubble",
+                        "--hide-crash-restore-bubble",
+                        "--disable-infobars",
+                        "--no-default-browser-check",
+                    ],
+                }
+                if channel:
+                    kwargs["channel"] = channel
+                context = p.chromium.launch_persistent_context(**kwargs)
+                self.active_context = context
+
+                # Ensure initial tab is on about:blank and clean up any leftover restored tabs
+                if context.pages:
+                    try:
+                        if context.pages[0].url != "about:blank":
+                            context.pages[0].goto("about:blank")
+                    except Exception:
+                        pass
+                    for extra_page in context.pages[1:]:
+                        try:
+                            extra_page.close()
+                        except Exception:
+                            pass
+                return context
+            except Exception:
+                continue
+        return None
+
+    def _execute_job(self, task_dict, queue_type, idx, target_date, existing_context=None, playwright_instance=None, run_mode="Individual Run"):
         self.abort_signal = False
         
         try:
@@ -448,59 +528,117 @@ class DesktopAPI:
             "is_all_geo": bool(task_dict.get("is_all_geo", False)),
         }
 
-        try:
-            def custom_log(msg):
-                self.emit_log(msg, queue_type, idx)
-                
-            if downloader:
-                downloader.LOG_CALLBACK = custom_log
+        # Pre-bind the exact daily folder so all attempts, retries, and errors log historically
+        if downloader:
+            try:
+                folder_date = downloader.output_date_for_preset(target_date)
+                daily_dir = UPLOAD_DIR / folder_date.isoformat()
+                daily_dir.mkdir(parents=True, exist_ok=True)
+                downloader.CURRENT_DATE_DIR = daily_dir
+                downloader.CURRENT_QUEUE_TYPE = queue_type
+                downloader.CURRENT_RUN_MODE = run_mode
+            except Exception:
+                pass
 
-            from playwright.sync_api import sync_playwright
-            profile_dir = SYSTEM_DIR / "bytebrew_profile"
-            profile_dir.mkdir(parents=True, exist_ok=True)
+        import time
+        max_attempts = 2
+        active_context = existing_context
 
-            with sync_playwright() as p:
-                context = None
-                for channel in ["chrome", "msedge", None]:
-                    try:
-                        kwargs = {
-                            "user_data_dir": str(profile_dir),
-                            "headless": True,
-                            "accept_downloads": True,
-                            "viewport": {"width": 1600, "height": 950},
-                        }
-                        if channel:
-                            kwargs["channel"] = channel
-                        context = p.chromium.launch_persistent_context(**kwargs)
-                        self.active_context = context
-                        break
-                    except Exception:
-                        continue
-
-                if not context:
-                    return False
-
-                page = context.pages[0] if context.pages else context.new_page()
-                self.active_page = page
-                page.set_default_timeout(15000)
-
-                downloader.process_game(page, game_config, email=email, password=password)
-                
-                self.active_page = None
-                self.active_context = None
-                context.close()
-                return True
-        except Exception as e:
-            err_str = str(e)
+        for attempt in range(1, max_attempts + 1):
             if self.abort_signal:
-                downloader.log(f"Task for {game_config['game_name']} was manually stopped.")
-                return "aborted"
-            elif "LOGIN_REQUIRED" in err_str or "LOGIN_FAILED" in err_str:
-                downloader.log(f"Login missing or invalid. Pausing queue to request credentials.")
-                return "login_error"
-            else:
-                downloader.log(f"[Error executing {game_config['game_name']}]: {e}")
-            return False
+                if downloader:
+                    downloader.log(f"Task for {game_config['game_name']} was manually stopped.")
+                return "aborted", active_context
+
+            try:
+                def custom_log(msg):
+                    self.emit_log(msg, queue_type, idx)
+                    
+                if downloader:
+                    downloader.LOG_CALLBACK = custom_log
+
+                # Check if active_context is alive; if dead, close it so we can re-launch
+                if active_context and not self._is_context_alive(active_context):
+                    try:
+                        active_context.close()
+                    except Exception:
+                        pass
+                    active_context = None
+
+                # Batch Mode (RUN ALL)
+                if playwright_instance:
+                    if not active_context:
+                        active_context = self._launch_browser_context(playwright_instance)
+                    if not active_context:
+                        return False, None
+
+                    anchor_page = active_context.pages[0] if active_context.pages else active_context.new_page()
+                    try:
+                        if anchor_page.url != "about:blank":
+                            anchor_page.goto("about:blank")
+                    except Exception:
+                        pass
+
+                    # Keep only one anchor tab open before starting
+                    for p in active_context.pages[1:]:
+                        try:
+                            p.close()
+                        except Exception:
+                            pass
+
+                    self.active_page = anchor_page
+                    anchor_page.set_default_timeout(15000)
+
+                    downloader.process_game(anchor_page, game_config, email=email, password=password)
+                    return True, active_context
+
+                # Single Task Mode (Individual Run)
+                else:
+                    from playwright.sync_api import sync_playwright
+                    with sync_playwright() as p:
+                        context = self._launch_browser_context(p)
+                        if not context:
+                            return False, None
+
+                        anchor_page = context.pages[0] if context.pages else context.new_page()
+                        try:
+                            if anchor_page.url != "about:blank":
+                                anchor_page.goto("about:blank")
+                        except Exception:
+                            pass
+
+                        self.active_page = anchor_page
+                        anchor_page.set_default_timeout(15000)
+
+                        downloader.process_game(anchor_page, game_config, email=email, password=password)
+                        
+                        self.active_page = None
+                        self.active_context = None
+                        try:
+                            context.close()
+                        except Exception:
+                            pass
+                        return True, None
+
+            except Exception as e:
+                err_str = str(e)
+                if self.abort_signal:
+                    if downloader:
+                        downloader.log(f"Task for {game_config['game_name']} was manually stopped.")
+                    return "aborted", active_context
+                elif "LOGIN_REQUIRED" in err_str or "LOGIN_FAILED" in err_str:
+                    if downloader:
+                        downloader.log(f"Login missing or invalid. Pausing queue to request credentials.")
+                    return "login_error", active_context
+
+                if attempt < max_attempts:
+                    if downloader:
+                        downloader.log(f"[Notice] Connection interrupted for {game_config['game_name']}. Self-healing session (Attempt {attempt + 1}/{max_attempts})...")
+                    time.sleep(3)
+                else:
+                    if downloader:
+                        downloader.log(f"[Error executing {game_config['game_name']}]: {e}")
+                    return False, active_context
 
     def run_single_task(self, queue_type, idx, target_date, delete_csvs=False):
         if queue_type == "dp1": tasks = self.tasks_dp1
@@ -509,12 +647,20 @@ class DesktopAPI:
         
         if idx >= len(tasks): return
 
+        # Pre-flight check: Prompt for credentials immediately if missing, before launching the browser
+        if queue_type in ["dp1", "all_geo"]:
+            creds = self.get_credentials()
+            if not (creds.get("email") or "").strip() or not (creds.get("password") or "").strip():
+                self._window.evaluate_js(f"triggerLoginRecovery('{queue_type}', {idx}, false)")
+                return
+
         def _worker():
             self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Running')")
             if queue_type == "dropsheet":
+                self.current_dropsheet_mode = "Individual Run"
                 res = self._execute_dropsheet_job(tasks[idx], idx, delete_csvs)
             else:
-                res = self._execute_job(tasks[idx], queue_type, idx, target_date)
+                res, _ = self._execute_job(tasks[idx], queue_type, idx, target_date, run_mode="Individual Run")
             
             if res == "login_error":
                 self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Failed')")
@@ -532,6 +678,13 @@ class DesktopAPI:
         else: tasks = self.tasks_dropsheet
         if not tasks: return
 
+        # Pre-flight check: Prompt for credentials immediately if missing, before launching the browser
+        if queue_type in ["dp1", "all_geo"]:
+            creds = self.get_credentials()
+            if not (creds.get("email") or "").strip() or not (creds.get("password") or "").strip():
+                self._window.evaluate_js(f"triggerLoginRecovery('{queue_type}', {start_idx}, true)")
+                return
+
         def _worker_all():
             if queue_type == "dp1": self.is_running_all_dp1 = True
             elif queue_type == "all_geo": self.is_running_all_all_geo = True
@@ -541,37 +694,70 @@ class DesktopAPI:
             self._window.evaluate_js(f"setRunAllState('{queue_type}', true, {start_idx}, {total})")
 
             success_count = start_idx
-            for idx, task in enumerate(tasks):
-                if idx < start_idx:
-                    continue
-                    
-                if queue_type == "dp1": is_running = self.is_running_all_dp1
-                elif queue_type == "all_geo": is_running = self.is_running_all_all_geo
-                else: is_running = self.is_running_all_dropsheet
 
-                if not is_running: break
-                
-                self._window.evaluate_js(f"setRunAllState('{queue_type}', true, {idx+1}, {total})")
-                self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Running')")
-                
-                if queue_type == "dropsheet":
+            if queue_type == "dropsheet":
+                self.current_dropsheet_mode = "RUN ALL"
+                for idx, task in enumerate(tasks):
+                    if idx < start_idx:
+                        continue
+                    if not self.is_running_all_dropsheet: break
+                    self._window.evaluate_js(f"setRunAllState('{queue_type}', true, {idx+1}, {total})")
+                    self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Running')")
                     res = self._execute_dropsheet_job(task, idx)
-                else:
-                    res = self._execute_job(task, queue_type, idx, target_date)
-                
-                if res == "login_error":
-                    self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Failed')")
+                    if res == True:
+                        success_count += 1
+                    status = 'Completed' if res == True else ('Aborted' if res == 'aborted' else 'Failed')
+                    self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, '{status}')")
+                self.is_running_all_dropsheet = False
+                self._window.evaluate_js(f"setRunAllCompleted('{queue_type}', {success_count}, {total})")
+                return
+
+            # For DP1 and All Geo: Single persistent browser session for the entire queue
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                context = self._launch_browser_context(p)
+                if not context:
                     if queue_type == "dp1": self.is_running_all_dp1 = False
-                    elif queue_type == "all_geo": self.is_running_all_all_geo = False
-                    else: self.is_running_all_dropsheet = False
+                    else: self.is_running_all_all_geo = False
                     self._window.evaluate_js(f"setRunAllCompleted('{queue_type}', {success_count}, {total})")
-                    self._window.evaluate_js(f"triggerLoginRecovery('{queue_type}', {idx}, true)")
                     return
 
-                if res == True:
-                    success_count += 1
-                status = 'Completed' if res == True else ('Aborted' if res == 'aborted' else 'Failed')
-                self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, '{status}')")
+                try:
+                    for idx, task in enumerate(tasks):
+                        if idx < start_idx:
+                            continue
+                            
+                        is_running = self.is_running_all_dp1 if queue_type == "dp1" else self.is_running_all_all_geo
+                        if not is_running or self.abort_signal: break
+                        
+                        self._window.evaluate_js(f"setRunAllState('{queue_type}', true, {idx+1}, {total})")
+                        self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Running')")
+
+                        res, context = self._execute_job(task, queue_type, idx, target_date, existing_context=context, playwright_instance=p, run_mode="RUN ALL")
+                        
+                        if res == "login_error":
+                            self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, 'Failed')")
+                            if queue_type == "dp1": self.is_running_all_dp1 = False
+                            else: self.is_running_all_all_geo = False
+                            self._window.evaluate_js(f"setRunAllCompleted('{queue_type}', {success_count}, {total})")
+                            self._window.evaluate_js(f"triggerLoginRecovery('{queue_type}', {idx}, true)")
+                            return
+
+                        if res == True:
+                            success_count += 1
+                        status = 'Completed' if res == True else ('Aborted' if res == 'aborted' else 'Failed')
+                        self._window.evaluate_js(f"updateTaskStatus('{queue_type}', {idx}, '{status}')")
+                        # Server Cooldown: Brief rest between consecutive games to prevent ByteBrew backend throttling
+                        if idx < len(tasks) - 1 and not self.abort_signal:
+                            import time
+                            time.sleep(2.5)
+                finally:
+                    self.active_page = None
+                    self.active_context = None
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
 
             # Reset internal flags
             if queue_type == "dp1":
