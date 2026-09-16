@@ -1,4 +1,4 @@
-# ByteRunner: ByteBrew Automation & Progression Engine V4.1
+# ByteRunner: ByteBrew Automation & Progression Engine V5.0
 
 ByteRunner is a desktop automation and analytics tool built with Python, PyWebView (Tailwind CSS frontend), and Playwright. It automates cohort configuration, multi-part funnel extraction, DP1 KPI aggregation, and custom drop sheet progression generation via remote script execution.
 
@@ -75,7 +75,7 @@ python app.py
 Compile the application into an optimized directory-based binary using PyInstaller:
 
 ```bash
-pyinstaller --noconfirm --onedir --windowed --icon="icon.ico" --add-data "ui;ui" --add-data "ui/bb.png;." --collect-all "playwright" --collect-all "openpyxl" --hidden-import "pandas" --hidden-import "requests" --name "ByteRunner" app.py
+pyinstaller --noconfirm --onedir --windowed --icon="icon.ico" --add-data "ui;ui" --add-data "ui/bb.png;." --collect-all "playwright" --collect-all "openpyxl" --collect-all "webview" --collect-all "pycountry" --hidden-import "bytebrew_downloader" --hidden-import "pandas" --hidden-import "requests" --name "ByteRunner" app.py
 ```
 
 The compiled application folder will be generated inside the `dist/ByteRunner/` directory. Remember to keep the bundled `_internal/` and `ui/` directories alongside the executable.
@@ -85,5 +85,5 @@ The compiled application folder will be generated inside the `dist/ByteRunner/` 
 ## Output Architecture
 
 * **Excel Reports:** `files/YYYY-MM-DD/<Output_Name>.xlsx`
-* **Execution Logs:** `files/YYYY-MM-DD/execution_log_dp1.txt` / `files/YYYY-MM-DD/execution_log_all_geo.txt`
+* **Execution Logs:** `files/YYYY-MM-DD/execution_log_dp1.md` / `files/YYYY-MM-DD/execution_log_all_geo.md` / `files/YYYY-MM-DD/execution_log_dropsheet.md`
 * **Local Credentials:** `System Files/credentials.json` (created on first save)
