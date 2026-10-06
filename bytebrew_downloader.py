@@ -1653,6 +1653,15 @@ def download_csv(page, output_path, game_name):
                 pass
 
 
+def _norm_str(val):
+    """Normalizes whitespace and hyphens for exact Part A matching."""
+    return re.sub(r'\s*-\s*', '-', str(val or '').strip().lower())
+
+
+def _strip_prefix(val):
+    """Strips ByteBrew leading alphabet/undefined step tags for Part B matching."""
+    clean = re.sub(r'^[a-z0-9_]+\s*-\s*', '', str(val or '').strip(), flags=re.I)
+    return clean.strip().lower()
 def get_game_users_flexible(df, candidates):
     if 'EVENT' not in df.columns or 'USERS' not in df.columns:
         return 0
@@ -1672,8 +1681,9 @@ def get_ad_users_flexible(df_ad, patterns):
     return 0
 
 
-def calculate_metrics_for_version(df_game, df_ad):
+def calculate_metrics_for_version(df_game, df_ad, metric_map=None):
     metrics = {}
+    metric_map = metric_map or {}
 
     # FAILSAFE: If ByteBrew exported as Line chart (has DATE col), filter to the most recent date ONLY
     if 'DATE' in df_game.columns and not df_game.empty:
@@ -1681,29 +1691,69 @@ def calculate_metrics_for_version(df_game, df_ad):
     if 'DATE' in df_ad.columns and not df_ad.empty:
         df_ad = df_ad[df_ad['DATE'] == df_ad['DATE'].max()].copy()
 
+    # Normalize lookup columns
+    df_game = df_game.copy()
+    df_ad = df_ad.copy()
+    if 'EVENT' in df_game.columns:
+        df_game['EVENT_NORM'] = df_game['EVENT'].astype(str).apply(_norm_str)
+    if 'EVENT' in df_ad.columns:
+        df_ad['EVENT_STRIPPED'] = df_ad['EVENT'].astype(str).apply(_strip_prefix)
+
+    # 1. Total Users (Part A)
+    total_users = 0
+    target_install = metric_map.get('Install Users')
+    if target_install and 'EVENT_NORM' in df_game.columns and 'USERS' in df_game.columns:
+        match = df_game[df_game['EVENT_NORM'] == _norm_str(target_install)]
+        if not match.empty:
+            total_users = match['USERS'].iloc[0]
+    if total_users == 0:
+        total_users = get_game_users_flexible(df_game, ['A - new_user', 'A - newUser', 'new_user'])
+    metrics['Total Users'] = int(total_users) if total_users > 0 else 0
+
+    # 2. Progression Levels (Part A)
     def get_level_variations(prefix):
         return [f"{prefix} - levelStarted", f"{prefix} - level_started", f"{prefix} - level_start"]
 
     level_event_map = {
-        'total_users': ['A - new_user', 'A - newUser', 'new_user'],
         20: get_level_variations('B'), 50: get_level_variations('C'), 70: get_level_variations('D'),
         100: get_level_variations('E'), 150: get_level_variations('F'), 200: get_level_variations('G'),
     }
 
-    total_users = get_game_users_flexible(df_game, level_event_map['total_users'])
-    metrics['Total Users'] = int(total_users) if total_users > 0 else 0
-
     for level in [20, 50, 70, 100, 150, 200]:
-        users_at_level = get_game_users_flexible(df_game, level_event_map[level])
-        metrics[f'% of users at {level}'] = users_at_level / total_users if total_users > 0 else 0.0
+        users_at_level = 0
+        target_level = metric_map.get(f'Level {level} Start')
+        if target_level and 'EVENT_NORM' in df_game.columns and 'USERS' in df_game.columns:
+            match = df_game[df_game['EVENT_NORM'] == _norm_str(target_level)]
+            if not match.empty:
+                users_at_level = match['USERS'].iloc[0]
+        if users_at_level == 0 and not target_level:
+            users_at_level = get_game_users_flexible(df_game, level_event_map.get(level, []))
+        metrics[f'% of users at {level}'] = (users_at_level / total_users) if total_users > 0 else 0.0
 
+    # 3. Ad Milestones (Part B)
     for level in [10, 20, 40, 70, 100]:
-        users_at_ad = get_ad_users_flexible(df_ad, [f"ads_{level}", f"adShown_{level}"])
-        metrics[f'% of users at Ads {level}'] = users_at_ad / total_users if total_users > 0 else 0.0
+        users_at_ad = 0
+        target_ad = metric_map.get(f'{level} Ads Seen')
+        if target_ad and 'EVENT_STRIPPED' in df_ad.columns and 'USERS' in df_ad.columns:
+            match = df_ad[df_ad['EVENT_STRIPPED'] == _strip_prefix(target_ad)]
+            if not match.empty:
+                users_at_ad = match['USERS'].sum()
+        if users_at_ad == 0 and not target_ad:
+            users_at_ad = get_ad_users_flexible(df_ad, [f"ads_{level}", f"adShown_{level}"])
+        metrics[f'% of users at Ads {level}'] = (users_at_ad / total_users) if total_users > 0 else 0.0
 
+    # 4. Average Ad per User (Part B)
     if total_users > 0 and 'EVENT' in df_ad.columns and 'EVENT AMOUNT' in df_ad.columns:
-        inter_mask = df_ad['EVENT'].astype(str).str.contains('J', na=False) & df_ad['EVENT'].astype(str).str.contains('inter', na=False)
-        reward_mask = df_ad['EVENT'].astype(str).str.contains('undefined', na=False) & df_ad['EVENT'].astype(str).str.contains('reward', na=False)
+        target_inter = _strip_prefix(metric_map.get('Interstitial Ad Watch')) if metric_map.get('Interstitial Ad Watch') else None
+        target_reward = _strip_prefix(metric_map.get('Rewarded Ad Watch')) if metric_map.get('Rewarded Ad Watch') else None
+
+        if target_inter or target_reward:
+            inter_mask = (df_ad['EVENT_STRIPPED'] == target_inter) if target_inter else pd.Series(False, index=df_ad.index)
+            reward_mask = (df_ad['EVENT_STRIPPED'] == target_reward) if target_reward else pd.Series(False, index=df_ad.index)
+        else:
+            inter_mask = df_ad['EVENT_STRIPPED'].str.contains('inter', na=False)
+            reward_mask = df_ad['EVENT_STRIPPED'].str.contains('reward', na=False)
+
         total_ad_events = df_ad.loc[inter_mask | reward_mask, 'EVENT AMOUNT'].sum()
         metrics['Avg Ad per user'] = total_ad_events / total_users
     else:
@@ -1752,7 +1802,8 @@ def process_dp1_merge(output_dir, game):
     df_ret.to_csv(part_a_files[0], index=False)
     df_ad.to_csv(part_b_files[0], index=False)
 
-    metrics = calculate_metrics_for_version(df_ret, df_ad)
+    metric_map = game.get("metric_map", {})
+    metrics = calculate_metrics_for_version(df_ret, df_ad, metric_map=metric_map)
 
     kpi_order = [
         'Total Users', '% of users at 20', '% of users at 50', '% of users at 70',
@@ -1867,58 +1918,60 @@ def process_all_geo_merge(output_dir, game, cohort_date):
     ret_events_str = " ".join(ret_df['EVENT'].dropna().unique()) if 'EVENT' in ret_df.columns else ""
     ad_events_str = " ".join(ad_df['EVENT'].dropna().unique()) if 'EVENT' in ad_df.columns else ""
 
-    ret_base = "levelStarted"
-    onboard_evt = "H - levelStarted"
-    if "level_start" in ret_events_str and "level_started" not in ret_events_str:
-        ret_base = "level_start"
-        onboard_evt = "H - level_start"
-    elif "level_started" in ret_events_str:
-        ret_base = "level_started"
-        if "level_completed" in ret_events_str:
-            onboard_evt = "H - level_completed"
-        else:
-            onboard_evt = "H - level_started"
-    elif "levelStarted" in ret_events_str:
-        ret_base = "levelStarted"
-        onboard_evt = "H - levelStarted"
+    metric_map = game.get("metric_map", {})
 
-    ad_base = "adShown_" if "adShown_" in ad_events_str else "ads_"
-    new_user_evt = "A - new_user"
+    ret_df['EVENT_NORM'] = ret_df['EVENT'].astype(str).apply(_norm_str) if 'EVENT' in ret_df.columns else ""
+    ad_df['EVENT_STRIPPED'] = ad_df['EVENT'].astype(str).apply(_strip_prefix) if 'EVENT' in ad_df.columns else ""
 
     geos_to_process = sorted(ret_df['GEO'].unique()) if 'GEO' in ret_df.columns else []
-    
-    ret_lookup = ret_df.set_index(['GEO', 'EVENT'])['USERS'].to_dict() if {'GEO', 'EVENT', 'USERS'}.issubset(ret_df.columns) else {}
-    ad_lookup = ad_df.set_index(['GEO', 'EVENT'])['USERS'].to_dict() if {'GEO', 'EVENT', 'USERS'}.issubset(ad_df.columns) else {}
 
-    inter_mask = ad_df['EVENT'].astype(str).str.contains('J', na=False) & ad_df['EVENT'].astype(str).str.contains('inter', na=False) if 'EVENT' in ad_df.columns else pd.Series([False]*len(ad_df))
-    reward_mask = ad_df['EVENT'].astype(str).str.contains('undefined', na=False) & ad_df['EVENT'].astype(str).str.contains('reward', na=False) if 'EVENT' in ad_df.columns else pd.Series([False]*len(ad_df))
-    geo_ad_totals = ad_df[inter_mask | reward_mask].groupby('GEO')['EVENT AMOUNT'].sum().to_dict() if 'EVENT AMOUNT' in ad_df.columns and 'GEO' in ad_df.columns else {}
+    ret_lookup = ret_df.set_index(['GEO', 'EVENT_NORM'])['USERS'].to_dict() if {'GEO', 'EVENT_NORM', 'USERS'}.issubset(ret_df.columns) else {}
+    ad_lookup = ad_df.set_index(['GEO', 'EVENT_STRIPPED'])['USERS'].to_dict() if {'GEO', 'EVENT_STRIPPED', 'USERS'}.issubset(ad_df.columns) else {}
+
+    target_inter = _strip_prefix(metric_map.get('Interstitial Ad Watch')) if metric_map.get('Interstitial Ad Watch') else None
+    target_reward = _strip_prefix(metric_map.get('Rewarded Ad Watch')) if metric_map.get('Rewarded Ad Watch') else None
+
+    if 'EVENT_STRIPPED' in ad_df.columns and 'EVENT AMOUNT' in ad_df.columns and 'GEO' in ad_df.columns:
+        if target_inter or target_reward:
+            inter_mask = (ad_df['EVENT_STRIPPED'] == target_inter) if target_inter else pd.Series(False, index=ad_df.index)
+            reward_mask = (ad_df['EVENT_STRIPPED'] == target_reward) if target_reward else pd.Series(False, index=ad_df.index)
+        else:
+            inter_mask = ad_df['EVENT_STRIPPED'].str.contains('inter', na=False)
+            reward_mask = ad_df['EVENT_STRIPPED'].str.contains('reward', na=False)
+        geo_ad_totals = ad_df[inter_mask | reward_mask].groupby('GEO')['EVENT AMOUNT'].sum().to_dict()
+    else:
+        geo_ad_totals = {}
+
+    target_install = _norm_str(metric_map.get('Install Users', 'A - new_user'))
+    target_onboard = _norm_str(metric_map.get('Onboard Users', 'H - level_completed'))
 
     final_data = {}
     for geo in geos_to_process:
-        total_users = ret_lookup.get((geo, new_user_evt), 0)
+        total_users = ret_lookup.get((geo, target_install), 0)
         if total_users == 0:
-            total_users = ret_lookup.get((geo, 'new_user'), 0)
+            total_users = ret_lookup.get((geo, 'a-new_user'), 0) or ret_lookup.get((geo, 'new_user'), 0)
         if total_users == 0:
             continue
 
-        onboarded = ret_lookup.get((geo, onboard_evt), 0)
+        onboarded = ret_lookup.get((geo, target_onboard), 0)
+        if onboarded == 0:
+            onboarded = ret_lookup.get((geo, 'h-level_started'), 0) or ret_lookup.get((geo, 'h-levelstarted'), 0)
         country_name = get_country_name_from_code(geo)
 
         res = {'User Installed': int(total_users)}
-        
+
         lvls = [20, 50, 70, 100, 150, 200]
-        lvl_map = {20: 'B', 50: 'C', 70: 'D', 100: 'E', 150: 'F', 200: 'G'}
         for lvl in lvls:
-            evt = f"{lvl_map[lvl]} - {ret_base}"
-            count = ret_lookup.get((geo, evt), 0)
+            target_lvl = _norm_str(metric_map.get(f'Level {lvl} Start')) if metric_map.get(f'Level {lvl} Start') else None
+            count = ret_lookup.get((geo, target_lvl), 0) if target_lvl else 0
             res[f'% of users at {lvl}'] = count / total_users if total_users > 0 else 0.0
             res[f'vs Onboard - Lvl {lvl} %'] = (count / onboarded) if onboarded > 0 else 0.0
 
-        ad_lvls = {10: 'A', 20: 'B', 40: 'D', 70: 'F', 100: 'G'}
-        for lvl, char in ad_lvls.items():
-            evt = f"{char} - {ad_base}{lvl}"
-            res[f'% of users at Ads {lvl}'] = ad_lookup.get((geo, evt), 0) / total_users if total_users > 0 else 0.0
+        ad_lvls = [10, 20, 40, 70, 100]
+        for lvl in ad_lvls:
+            target_ad = _strip_prefix(metric_map.get(f'{lvl} Ads Seen')) if metric_map.get(f'{lvl} Ads Seen') else None
+            count_ad = ad_lookup.get((geo, target_ad), 0) if target_ad else 0
+            res[f'% of users at Ads {lvl}'] = count_ad / total_users if total_users > 0 else 0.0
 
         res['Avg Ad per user'] = geo_ad_totals.get(geo, 0) / total_users if total_users > 0 else 0.0
         res['Users Onboarded'] = int(onboarded)

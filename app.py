@@ -26,6 +26,7 @@ SHEET_ID = "1GVaA0ajVKbrPbqdlY5vbXa6ONlXEjGnotS3-3pYI5Ww"
 SHEET_NAME_DP1 = "Dp1"
 SHEET_NAME_ALL_GEO = "allGeo"
 SHEET_NAME_DROP_SHEET = "DropSheet"
+SHEET_NAME_METRICS = "Metrics"
 CREDENTIALS_FILE = SYSTEM_DIR / "credentials.json"
 SETTINGS_FILE = SYSTEM_DIR / "settings.json"
 
@@ -237,8 +238,10 @@ class DesktopAPI:
         url_all_geo = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME_ALL_GEO}"
         url_dropsheet = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME_DROP_SHEET}"
         meta_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=metaData"
+        metrics_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet={SHEET_NAME_METRICS}"
         try:
             icon_map = {}
+            metrics_map = {}
             try:
                 meta_df = pd.read_csv(meta_url)
                 meta_df.columns = meta_df.columns.str.strip()
@@ -247,6 +250,25 @@ class DesktopAPI:
                     icon_map = dict(zip(meta_df['Game Name'].astype(str).str.strip(), meta_df['Playstore Icon'].astype(str).str.strip()))
             except Exception as e:
                 print(f"[DesktopAPI] Warning: Could not load metaData sheet: {e}", flush=True)
+
+            try:
+                m_df = pd.read_csv(metrics_url)
+                m_df.columns = m_df.columns.str.strip()
+                if 'Metric Title' in m_df.columns:
+                    m_df = m_df.dropna(subset=['Metric Title'])
+                    m_df['Metric Title'] = m_df['Metric Title'].astype(str).str.strip()
+                    for col in m_df.columns:
+                        if col != 'Metric Title' and not col.startswith('Unnamed'):
+                            g_key = col.strip().lower()
+                            game_dict = {}
+                            for _, r in m_df.iterrows():
+                                title = str(r['Metric Title']).strip()
+                                val = str(r[col]).strip() if pd.notna(r[col]) else ""
+                                if val and val.lower() != 'nan':
+                                    game_dict[title] = val
+                            metrics_map[g_key] = game_dict
+            except Exception as e:
+                print(f"[DesktopAPI] Warning: Could not load Metrics sheet: {e}", flush=True)
 
             def parse_sheet_df(url, is_all_geo=False):
                 try:
@@ -261,6 +283,7 @@ class DesktopAPI:
                         g_name = str(task.get('Game Name', '')).strip()
                         task['Playstore Icon'] = icon_map.get(g_name, "")
                         task['is_all_geo'] = is_all_geo
+                        task['metric_map'] = metrics_map.get(g_name.lower(), {})
                     return tasks
                 except Exception as ex:
                     print(f"[DesktopAPI] Error parsing sheet from {url}: {ex}", flush=True)
@@ -526,6 +549,7 @@ class DesktopAPI:
             "country": str(task_dict.get("Country", "")).strip() if task_dict.get("Country") else "",
             "output_name": str(task_dict.get("Output Name") or task_dict.get("Game Name")),
             "is_all_geo": bool(task_dict.get("is_all_geo", False)),
+            "metric_map": task_dict.get("metric_map", {}),
         }
 
         # Pre-bind the exact daily folder so all attempts, retries, and errors log historically
